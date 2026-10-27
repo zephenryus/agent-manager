@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.*
+config.local.json
+# The real vault lives OUTSIDE this repo. Never commit real boards, notes or transcripts.
+vault/
+*.log
+.DS_Store

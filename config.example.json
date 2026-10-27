@@ -1,0 +1,10 @@
+{
+  "aws": {
+    "profile": "YOUR_PROFILE_NAME",
+    "region": "us-east-1"
+  },
+  "models": {
+    "router": "us.anthropic.claude-haiku-5-5",
+    "specialist": "us.anthropic.claude-sonnet-5-5"
+  }
+}
