@@ -68,13 +68,23 @@ function buildSystem(input: ContextInput): string {
     sections.push(`## Your recent log (newest last)\n${logTail.join("\n")}`);
   }
   if (input.boards && input.boards.length > 0 && agent.tools.some((t) => t.startsWith("board_"))) {
+    const authority = agent.isOrchestrator
+      ? `You can change any task item or sprint item yourself, at once. Only PI changes need ${user}'s approval.`
+      : `You can change task items you created, and items created by people who report to you, at once. ` +
+        `Sprint and PI changes, and other people's task items, become requests in the approvals inbox.`;
     sections.push(
       `## Boards\nBoards: ${input.boards.join(", ")}. Goals roll up: task items (T-n) belong to a sprint item (SP-n), ` +
         `sprint items belong to a PI item (PI-n). Board tools take a \`board\` name and default to the board in focus. ` +
-        `You can change task items you created at once. Anything else becomes a request in the approvals inbox, ` +
-        `and the tool tells you who must approve; do not retry it, just tell the user it is waiting.`,
+        `${authority} When ${user} asks you to change a board, make the change yourself with your board tools; ` +
+        `never tell ${user} to run a tool. If a tool says a request is waiting for approval, tell ${user} it is ` +
+        `waiting and who must approve it, and do not retry it.`,
     );
   }
+  sections.push(
+    `## Working with ${user}\n${user} is who you work for. If ${user} says this is a test, or asks for sample or ` +
+      `mock data, give it, label it clearly as MOCK so nobody mistakes it for real evidence, and carry on. ` +
+      `Do not refuse because it is not real; that rule is about passing invented material off as real.`,
+  );
   if (focus) {
     sections.push(`## Board in focus: ${focus.name}\n${focus.text.trim()}`);
   }

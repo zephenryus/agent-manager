@@ -128,3 +128,26 @@ test("without a user name the prompt says 'the user'", () => {
   assert.match(system, /team room with the user/);
   assert.equal(messages[0]!.role === "user" && messages[0]!.text, "the user: hi");
 });
+
+test("agents with board tools learn the boards and what they may change", () => {
+  const boards = ["pi.md", "sprint.md", "tasks/a.md"];
+  const worker = buildContext(input([e("user", "hi")], { agent: agent("synthesizer", "Synthesizer", { tools: ["board_add"] }), boards })).system;
+  assert.match(worker, /Boards: pi\.md, sprint\.md, tasks\/a\.md\./);
+  assert.match(worker, /task items you created, and items created by people who report to you, at once/);
+  assert.match(worker, /make the change yourself with your board tools; never tell Kevin to run a tool/);
+  assert.match(worker, /do not retry it/);
+
+  const boss = buildContext(
+    input([e("user", "hi")], { agent: agent("floor-manager", "Floor manager", { isOrchestrator: true, tools: ["board_edit"] }), boards }),
+  ).system;
+  assert.match(boss, /change any task item or sprint item yourself, at once\. Only PI changes need Kevin's approval/);
+
+  const noTools = buildContext(input([e("user", "hi")], { boards })).system;
+  assert.doesNotMatch(noTools, /## Boards/);
+});
+
+test("the user is the boss: test or mock data requests are honored, labeled MOCK", () => {
+  const { system } = buildContext(input([e("user", "hi")]));
+  assert.match(system, /## Working with Kevin/);
+  assert.match(system, /says this is a test, or asks for sample or mock data, give it, label it clearly as MOCK/);
+});
