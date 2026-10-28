@@ -39,6 +39,8 @@ export type AppOptions = {
   git?: Pick<VaultGit, "commit">;
   userName: string;
   defaultBoard: string;
+  /** Vault folders agents may read with files_list and files_read. */
+  readableFolders?: string[];
   /** Folder with index.html, style.css, app.js ... served at /. */
   publicDir: string;
   /** Host names the browser may use, with port (DNS-rebinding guard). */
@@ -97,6 +99,7 @@ export function createApp(opts: AppOptions): App {
     router: opts.router,
     userName: opts.userName,
     defaultBoard: opts.defaultBoard,
+    ...(opts.readableFolders ? { readableFolders: opts.readableFolders } : {}),
     onEvent: (e: RoomEvent) => {
       if (e.type === "agent_state") agentStates.set(e.agentId, e.state);
       // Raw model internals stay on the server; the UI only needs what a person would see.

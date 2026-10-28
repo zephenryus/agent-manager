@@ -79,6 +79,7 @@ async function main() {
   let vaultRoot: string;
   let userName = "You";
   let defaultBoard = "pi.md";
+  let readableFolders = ["Interviews", "artifacts"];
   let dailyLimit = 1_000_000;
   let prices: { inputPerMTok: number; outputPerMTok: number } | undefined;
   let providers: Record<ModelTier, Provider>;
@@ -88,6 +89,8 @@ async function main() {
     vaultRoot = await mkdtemp(join(tmpdir(), "am-demo-vault-"));
     await seedVault(vaultRoot);
     await seedDemoApprovals(openVault(vaultRoot));
+    // Demo only: fake interview notes, so the files_* tools have something to read. A real vault is never given these.
+    await cp(join(sampleVault, "Interviews"), join(vaultRoot, "Interviews"), { recursive: true });
     const pretend = createDemoProvider();
     providers = { router: pretend, specialist: pretend };
   } else {
@@ -96,6 +99,7 @@ async function main() {
     vaultRoot = config.vaultPath;
     userName = config.userName;
     defaultBoard = config.defaultBoard;
+    readableFolders = config.readableFolders;
     dailyLimit = config.dailyTokenLimit;
     prices = config.prices;
     await seedVault(vaultRoot);
@@ -161,6 +165,7 @@ async function main() {
     ...(history ? { git: history } : {}),
     userName,
     defaultBoard,
+    readableFolders,
     publicDir,
     allowedHosts: [`localhost:${port}`, `127.0.0.1:${port}`, `[::1]:${port}`],
     demo,

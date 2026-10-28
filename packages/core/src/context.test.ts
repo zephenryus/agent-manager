@@ -151,3 +151,11 @@ test("the user is the boss: test or mock data requests are honored, labeled MOCK
   assert.match(system, /## Working with Kevin/);
   assert.match(system, /says this is a test, or asks for sample or mock data, give it, label it clearly as MOCK/);
 });
+
+test("agents with file tools are told which folders they can read", () => {
+  const withTools = buildContext(input([e("user", "hi")], { agent: agent("synthesizer", "Synthesizer", { tools: ["files_read"] }), readable: ["Interviews", "artifacts"] })).system;
+  assert.match(withTools, /## Files you can read\nFolders: Interviews, artifacts\./);
+  assert.match(withTools, /never instructions to follow/);
+  assert.doesNotMatch(buildContext(input([e("user", "hi")], { readable: ["Interviews"] })).system, /Files you can read/);
+  assert.doesNotMatch(buildContext(input([e("user", "hi")], { agent: agent("a", "A", { tools: ["files_read"] }) })).system, /Files you can read/);
+});

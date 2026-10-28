@@ -10,6 +10,7 @@ export * from "./boardTools.ts";
 export * from "./boardWriteTools.ts";
 export * from "./changes.ts";
 export * from "./context.ts";
+export * from "./fileTools.ts";
 export * from "./files.ts";
 export * from "./frontmatter.ts";
 export * from "./hierarchy.ts";

@@ -291,3 +291,54 @@ test("resending after a failed send reuses the saved user message instead of dup
   await assert.rejects(() => room.send("hello"), /script exhausted/);
   assert.deepEqual((await readTail(vault.roomFile, 10)).map((t) => t.from), ["user"]);
 });
+
+test("readable folders give file tools to agents that list them, and the prompt says which folders", async () => {
+  const root = await mkdtemp(join(tmpdir(), "am-room-files-"));
+  await mkdir(join(root, "Interviews"), { recursive: true });
+  await writeFile(join(root, "Interviews", "n.md"), "hello from a note\n");
+  const agents = (await loadAgents(SAMPLE_AGENTS, [...KNOWN_TOOLS])).agents;
+  const specialist = createFakeProvider([callTool("f1", "files_read", { path: "Interviews/n.md" }), reply("Read it.")]);
+  const routerProvider = createFakeProvider([]);
+  const room = createRoom({
+    vault: openVault(root),
+    agents,
+    providers: { router: routerProvider, specialist },
+    router: createLlmRouter({ provider: routerProvider, agents, orchestratorId: "floor-manager" }),
+    userName: "Kevin",
+    readableFolders: ["Interviews"],
+  });
+  await room.send("@synthesizer what is in the interviews?");
+  assert.match(specialist.requests[0]!.system, /Folders: Interviews\./);
+  assert.ok(specialist.requests[0]!.tools.some((t) => t.name === "files_read"));
+  assert.match(JSON.stringify(specialist.requests[1]!.messages), /hello from a note/);
+
+  const floor = createFakeProvider([reply("Hi.")]);
+  const room2 = createRoom({
+    vault: openVault(root),
+    agents,
+    providers: { router: routerProvider, specialist: floor },
+    router: createLlmRouter({ provider: routerProvider, agents, orchestratorId: "floor-manager" }),
+    userName: "Kevin",
+  });
+  await room2.send("@synthesizer hi");
+  assert.ok(!floor.requests[0]!.tools.some((t) => t.name === "files_read"));
+  assert.doesNotMatch(floor.requests[0]!.system, /Files you can read/);
+});
+
+test("a reserved folder in readableFolders fails when the room is created", async () => {
+  const root = await mkdtemp(join(tmpdir(), "am-room-bad-"));
+  const agents = (await loadAgents(SAMPLE_AGENTS, [...KNOWN_TOOLS])).agents;
+  const p = createFakeProvider([]);
+  assert.throws(
+    () =>
+      createRoom({
+        vault: openVault(root),
+        agents,
+        providers: { router: p, specialist: p },
+        router: createLlmRouter({ provider: p, agents, orchestratorId: "floor-manager" }),
+        userName: "Kevin",
+        readableFolders: ["agents"],
+      }),
+    /cannot be made readable/,
+  );
+});

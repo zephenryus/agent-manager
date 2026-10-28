@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { createBoardWriteTools } from "./boardWriteTools.ts";
+import { createFileTools } from "./fileTools.ts";
 import { buildContext } from "./context.ts";
 import type { FocusBoard } from "./context.ts";
 import { listBoardNames } from "./hierarchy.ts";
@@ -22,6 +23,8 @@ export const KNOWN_TOOLS = [
   "board_add",
   "board_edit",
   "board_set_status",
+  "files_list",
+  "files_read",
   "notes_head",
   "notes_tail",
   "notes_append",
@@ -47,6 +50,8 @@ export type RoomOptions = {
   userName?: string;
   clock?: Clock;
   onEvent?: (e: RoomEvent) => void;
+  /** Vault folders agents with the files_* tools may read (read-only), for example ["Interviews"]. */
+  readableFolders?: string[];
   /** Board (inside <vault>/boards) shown to agents when the user has not chosen a focus. */
   defaultBoard?: string;
   maxSteps?: number;
@@ -83,6 +88,9 @@ export function createRoom(opts: RoomOptions): Room {
   const windowSize = opts.transcriptWindow ?? 20;
   const active = opts.agents.filter((a) => a.status === "active");
   const byId = new Map(active.map((a) => [a.id, a]));
+  const readable = opts.readableFolders ?? [];
+  // Fail at startup, not on the first message, if the folder list names something that must stay private.
+  const fileTools = readable.length > 0 ? createFileTools({ vault: opts.vault, folders: readable }) : [];
 
   return {
     async send(text, sendOpts = {}) {
@@ -156,6 +164,7 @@ export function createRoom(opts: RoomOptions): Room {
             logTail,
             ...(focus ? { focus } : {}),
             boards,
+            ...(readable.length > 0 ? { readable } : {}),
             mode: sendOpts.dm !== undefined ? "dm" : "room",
             ...(opts.userName ? { userName: opts.userName } : {}),
           });
@@ -168,6 +177,7 @@ export function createRoom(opts: RoomOptions): Room {
             vault: opts.vault,
             agents: active,
             clock,
+            fileTools,
             ...(focus && focusName !== undefined ? { focusName } : {}),
           });
 
@@ -232,6 +242,7 @@ type ToolDeps = {
   vault: Vault;
   agents: AgentDef[];
   clock: Clock;
+  fileTools: Tool[];
   focusName?: string;
 };
 
@@ -240,6 +251,7 @@ function buildTools(agent: AgentDef, deps: ToolDeps): Tool[] {
   const all: Tool[] = [
     ...createNotesTools(deps.notes),
     createSuggestTool(agent.id, deps.validIds, deps.sink),
+    ...deps.fileTools,
     ...createBoardWriteTools({
       vault: deps.vault,
       agents: deps.agents,

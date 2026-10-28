@@ -96,3 +96,12 @@ test("ollama options are read, and mistakes name the field", () => {
   assert.throws(() => parseConfig({ provider: "ollama" }), /ollama\.models\.router/);
   assert.throws(() => parseConfig({ ...minimal, provider: "openai" }), /"provider" must be/);
 });
+
+test("readableFolders defaults, is validated, and refuses app-owned folders", () => {
+  assert.deepEqual(parseConfig(minimal, "/h").readableFolders, ["Interviews", "artifacts"]);
+  assert.deepEqual(parseConfig({ ...minimal, readableFolders: ["Research"] }, "/h").readableFolders, ["Research"]);
+  assert.deepEqual(parseConfig({ ...minimal, readableFolders: [] }, "/h").readableFolders, []);
+  assert.throws(() => parseConfig({ ...minimal, readableFolders: "Interviews" }, "/h"), /readableFolders/);
+  assert.throws(() => parseConfig({ ...minimal, readableFolders: ["agents"] }, "/h"), /readableFolders.*cannot be made readable/);
+  assert.throws(() => parseConfig({ ...minimal, readableFolders: ["a/b"] }, "/h"), /readableFolders/);
+});

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { assertReadableFolder } from "@am/core";
 
 export type OllamaConfig = {
   baseUrl: string;
@@ -17,6 +18,8 @@ type CommonConfig = {
   dailyTokenLimit: number;
   port: number;
   defaultBoard: string;
+  /** Vault folders agents may read (read-only). */
+  readableFolders: string[];
   prices?: { inputPerMTok: number; outputPerMTok: number };
 };
 
@@ -61,6 +64,21 @@ export function expandHome(p: string, home: string = homedir()): string {
   return p;
 }
 
+function parseReadableFolders(v: unknown): string[] {
+  if (v === undefined) return ["Interviews", "artifacts"];
+  if (!Array.isArray(v) || v.some((x) => typeof x !== "string")) {
+    throw new ConfigError(`config: "readableFolders" must be a list of folder names, like ["Interviews"]`);
+  }
+  for (const name of v as string[]) {
+    try {
+      assertReadableFolder(name);
+    } catch (err) {
+      throw new ConfigError(`config: "readableFolders": ${(err as Error).message}`);
+    }
+  }
+  return v as string[];
+}
+
 function parseOllama(raw: unknown): OllamaConfig {
   const o = obj(raw);
   const models = obj(o.models);
@@ -95,6 +113,7 @@ export function parseConfig(raw: unknown, home: string = homedir()): AppConfig {
     dailyTokenLimit: num(c.dailyTokenLimit, "dailyTokenLimit", 200_000, { int: true, min: 1 }),
     port: num(c.port, "port", DEFAULT_PORT, { int: true, min: 1, max: 65535 }),
     defaultBoard: str(c.defaultBoard, "defaultBoard", "pi.md"),
+    readableFolders: parseReadableFolders(c.readableFolders),
   };
   if (prices) {
     common.prices = {
