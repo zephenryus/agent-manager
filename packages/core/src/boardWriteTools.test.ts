@@ -25,7 +25,7 @@ async function setup(actor: string, defaultBoard?: string) {
     ...(defaultBoard ? { defaultBoard } : {}),
     clock: { now: () => new Date(Date.UTC(2026, 9, 28, 18, 0, 0)), newId: () => "x" },
   });
-  const run = (name: string, input: Record<string, unknown>) => tools.find((t) => t.name === name)!.run(input);
+  const run = async (name: string, input: Record<string, unknown>): Promise<string> => tools.find((t) => t.name === name)!.run(input);
   return { vault, run, agents };
 }
 
