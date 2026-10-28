@@ -2,6 +2,9 @@
 // core has no dependencies:
 //   key: value            string (optionally in "double" or 'single' quotes), number, true/false
 //   key: [a, b, c]        inline list of strings
+//   key:                  block list of strings, one "- item" per line (indented or not)
+//     - a
+//     - b
 //   # comment             ignored
 // Nested maps and multi-line values are NOT supported.
 
@@ -31,26 +34,43 @@ export function parseFrontmatter(source: string): ParsedDocument {
   const body = afterClose === -1 ? "" : text.slice(afterClose + 1);
 
   const data: Record<string, FrontmatterValue> = {};
-  header.split("\n").forEach((rawLine, index) => {
-    const line = rawLine.trim();
-    if (line === "" || line.startsWith("#")) return;
+  const lines = header.split("\n");
+  for (let index = 0; index < lines.length; index++) {
+    const line = (lines[index] ?? "").trim();
+    if (line === "" || line.startsWith("#")) continue;
+    const lineNo = index + 2;
     const colon = line.indexOf(":");
     if (colon <= 0) {
-      errors.push(`Line ${index + 2}: expected "key: value"`);
-      return;
+      errors.push(`Line ${lineNo}: expected "key: value"`);
+      continue;
     }
     const key = line.slice(0, colon).trim();
     const raw = line.slice(colon + 1).trim();
     if (!/^[a-z][a-z0-9_]*$/.test(key)) {
-      errors.push(`Line ${index + 2}: invalid key "${key}" (use lower_snake_case)`);
-      return;
+      errors.push(`Line ${lineNo}: invalid key "${key}" (use lower_snake_case)`);
+      continue;
+    }
+    // A bare "key:" followed by "- item" lines is a block list. Consume those lines either way so a
+    // duplicate or bad key does not leave its items behind as confusing extra errors.
+    let items: string[] | undefined;
+    if (raw === "") {
+      const collected: string[] = [];
+      let next = index + 1;
+      for (; next < lines.length; next++) {
+        const nextLine = (lines[next] ?? "").trim();
+        if (nextLine === "" || nextLine.startsWith("#")) continue;
+        if (nextLine !== "-" && !nextLine.startsWith("- ")) break;
+        collected.push(unquote(nextLine.slice(1).trim()));
+        index = next;
+      }
+      if (collected.length > 0) items = collected;
     }
     if (key in data) {
-      errors.push(`Line ${index + 2}: duplicate key "${key}"`);
-      return;
+      errors.push(`Line ${lineNo}: duplicate key "${key}"`);
+      continue;
     }
-    data[key] = parseValue(raw);
-  });
+    data[key] = items ?? parseValue(raw);
+  }
 
   return { data, body: body.trim(), errors };
 }

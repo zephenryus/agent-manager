@@ -53,3 +53,56 @@ test("a colon inside a value is kept", () => {
   const doc = parseFrontmatter("---\ngoal: Ship it: carefully\n---\n");
   assert.equal(doc.data.goal, "Ship it: carefully");
 });
+
+test("parses block-style lists, indented or not, with quotes and comments", () => {
+  const doc = parseFrontmatter(
+    [
+      "---",
+      "name: A",
+      "tools:",
+      "  - notes_head",
+      "  # a comment between items",
+      "  - 'files read'",
+      "",
+      '  - "board_list"',
+      "reports_to:",
+      "- boss",
+      "qa_partner: skeptic",
+      "---",
+      "Body",
+    ].join("\n"),
+  );
+  assert.deepEqual(doc.errors, []);
+  assert.deepEqual(doc.data, {
+    name: "A",
+    tools: ["notes_head", "files read", "board_list"],
+    reports_to: ["boss"],
+    qa_partner: "skeptic",
+  });
+  assert.equal(doc.body, "Body");
+});
+
+test("block lists work with Windows line endings", () => {
+  const doc = parseFrontmatter("---\r\ntools:\r\n  - a\r\n  - b\r\n---\r\nBody");
+  assert.deepEqual(doc.errors, []);
+  assert.deepEqual(doc.data.tools, ["a", "b"]);
+});
+
+test("an empty value with no list after it stays an empty string", () => {
+  const doc = parseFrontmatter("---\ngoal:\nname: A\n---\n");
+  assert.deepEqual(doc.errors, []);
+  assert.equal(doc.data.goal, "");
+  assert.equal(doc.data.name, "A");
+});
+
+test("a duplicate key swallows its block list instead of adding stray errors", () => {
+  const doc = parseFrontmatter("---\ntools: [a]\ntools:\n  - b\n  - c\n---\n");
+  assert.equal(doc.errors.length, 1);
+  assert.match(doc.errors[0] ?? "", /duplicate key "tools"/);
+  assert.deepEqual(doc.data.tools, ["a"]);
+});
+
+test("a stray list item with no key is still an error", () => {
+  const doc = parseFrontmatter("---\nname: A\n- orphan\n---\n");
+  assert.equal(doc.errors.length, 1);
+});
