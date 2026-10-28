@@ -38,7 +38,7 @@ test("a tool call round-trips and the board file changes", async () => {
 
   assert.equal(result.stopped, "done");
   assert.equal(result.steps, 2);
-  assert.equal(result.text, "Done.");
+  assert.equal(result.text, "Updating.\n\nDone.");
   assert.match(await readFile(board, "utf8"), /- PI-2 \[active\]/);
   assert.deepEqual(
     events.map((e) => e.type),
@@ -50,6 +50,35 @@ test("a tool call round-trips and the board file changes", async () => {
     second.messages.map((m) => m.role),
     ["user", "assistant", "tool"],
   );
+});
+
+test("an answer written in the same step as a tool call is not lost to a short closing line", async () => {
+  // Real-model behaviour seen on Bedrock: full answer + suggest_next in step 1, "I've suggested X" in step 2.
+  const provider = createFakeProvider([
+    callTool("c1", "board_list", {}, "Theme 1: export feels risky.\nTheme 2: people double-check by hand."),
+    reply("I've suggested the Research lead as the next step."),
+  ]);
+  const result = await runTurn({
+    provider,
+    system: "sys",
+    messages: [user("find themes")],
+    tools: createBoardTools(await boardCopy()),
+  });
+  assert.equal(
+    result.text,
+    "Theme 1: export feels risky.\nTheme 2: people double-check by hand.\n\nI've suggested the Research lead as the next step.",
+  );
+});
+
+test("steps with no text contribute nothing to the final text", async () => {
+  const provider = createFakeProvider([callTool("c1", "board_list", {}), callTool("c2", "board_list", {}), reply("Only this.")]);
+  const result = await runTurn({
+    provider,
+    system: "sys",
+    messages: [user("go")],
+    tools: createBoardTools(await boardCopy()),
+  });
+  assert.equal(result.text, "Only this.");
 });
 
 test("usage is summed across steps", async () => {

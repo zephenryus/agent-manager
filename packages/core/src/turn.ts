@@ -18,7 +18,10 @@ export type TurnOptions = {
 };
 
 export type TurnResult = {
-  /** Final assistant text (last non-empty text produced). */
+  /**
+   * All assistant text produced during the turn, in order, joined by blank lines. Models often write their
+   * answer in the same step as a tool call, so keeping only the last step's text would drop real answers.
+   */
   text: string;
   /** Messages produced during this turn, in order. */
   produced: Message[];
@@ -39,7 +42,7 @@ export async function runTurn(opts: TurnOptions): Promise<TurnResult> {
   const history: Message[] = [...opts.messages];
   const produced: Message[] = [];
   const usage: Usage = { inputTokens: 0, outputTokens: 0 };
-  let text = "";
+  const texts: string[] = [];
   let steps = 0;
 
   while (steps < maxSteps) {
@@ -57,12 +60,12 @@ export async function runTurn(opts: TurnOptions): Promise<TurnResult> {
     history.push(assistant);
     produced.push(assistant);
     if (res.text.trim()) {
-      text = res.text;
+      texts.push(res.text.trim());
       opts.onEvent?.({ type: "text", text: res.text });
     }
 
     if (res.toolCalls.length === 0) {
-      return { text, produced, steps, usage, stopped: "done" };
+      return { text: texts.join("\n\n"), produced, steps, usage, stopped: "done" };
     }
 
     const results: ToolResult[] = [];
@@ -83,7 +86,7 @@ export async function runTurn(opts: TurnOptions): Promise<TurnResult> {
     produced.push(toolMessage);
   }
 
-  return { text, produced, steps, usage, stopped: "max_steps" };
+  return { text: texts.join("\n\n"), produced, steps, usage, stopped: "max_steps" };
 }
 
 async function executeTool(

@@ -53,7 +53,9 @@ test("a routed message produces a reply, a transcript, notes and the right event
   const result = await room.send("How should we start discovery?");
 
   assert.equal(result.decision?.source, "llm");
-  assert.deepEqual(result.replies.map((r) => [r.from, r.text]), [["research-lead", "Start with five interviews."]]);
+  assert.deepEqual(result.replies.map((r) => [r.from, r.text]), [
+    ["research-lead", "Noting that.\n\nStart with five interviews."],
+  ]);
   // router 10/5 + two specialist steps 10/5 each
   assert.deepEqual(result.usage, { inputTokens: 30, outputTokens: 15 });
   assert.deepEqual(result.replies[0]!.usage, { inputTokens: 20, outputTokens: 10 });
@@ -143,6 +145,20 @@ test("suggestions from the router and from agents are merged without duplicates 
     { agentId: "floor-manager", reason: "check priorities" },
     { agentId: "synthesizer", reason: "agent also thinks so" },
   ]);
+});
+
+test("the recorded reply keeps the answer even when the model writes it alongside suggest_next", async () => {
+  const { room, vault } = await setup({
+    specialistScript: [
+      callTool("s1", "suggest_next", { agent_id: "research-lead", reason: "needs follow-ups" }, "Theme 1: trust. Theme 2: rework."),
+      reply("I've suggested the Research lead."),
+    ],
+  });
+  const result = await room.send("@synthesizer here are the notes");
+  assert.match(result.replies[0]!.text, /Theme 1: trust\. Theme 2: rework\./);
+  assert.match(result.replies[0]!.text, /I've suggested the Research lead\./);
+  const [, stored] = await readTail(vault.roomFile, 2);
+  assert.match(stored!.text, /Theme 1: trust/);
 });
 
 test("suggest_next rejects yourself and unknown agents with a readable error", async () => {
