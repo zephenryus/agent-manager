@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ProviderUnavailableError } from "../types.ts";
 import type { ModelRequest } from "../types.ts";
-import { createOllamaProvider } from "./ollama.ts";
+import { createOllamaProvider, salvageTextToolCalls } from "./ollama.ts";
 
 type Captured = { url: string; body: any };
 
@@ -139,4 +139,59 @@ test("a timeout is reported as slow, not as unreachable", async () => {
   } finally {
     clearTimeout(hold);
   }
+});
+
+const GQ = '<|"|>';
+
+test("a tool call the model wrote as text (Gemma syntax) is recovered and removed from the reply", () => {
+  const text =
+    "I have drafted the themes. Ready for your review, Kevin.\n\n" +
+    `suggest_next{agent_id:${GQ}research-lead${GQ},reason:${GQ}Reviewing the themes will help scope the next phase.${GQ}}`;
+  const r = salvageTextToolCalls(text, ["suggest_next", "board_add"]);
+  assert.equal(r.text, "I have drafted the themes. Ready for your review, Kevin.");
+  assert.deepEqual(r.calls, [
+    {
+      id: "call_0",
+      name: "suggest_next",
+      input: { agent_id: "research-lead", reason: "Reviewing the themes will help scope the next phase." },
+    },
+  ]);
+});
+
+test("recovery handles wrappers, braces inside strings, bare values and several calls", () => {
+  const text =
+    `Done.\n<|tool_call>call:board_add{title:${GQ}Add {x} | y${GQ},status:proposed,count:3,flag:true}<tool_call|>` +
+    ` suggest_next{agent_id:"synthesizer",reason:"Because \\"why\\""}`;
+  const r = salvageTextToolCalls(text, ["suggest_next", "board_add"]);
+  assert.equal(r.text, "Done.");
+  assert.deepEqual(r.calls.map((c) => c.name), ["board_add", "suggest_next"]);
+  assert.deepEqual(r.calls[0]!.input, { title: "Add {x} | y", status: "proposed", count: 3, flag: true });
+  assert.deepEqual(r.calls[1]!.input, { agent_id: "synthesizer", reason: 'Because "why"' });
+});
+
+test("recovery leaves ordinary text, unknown tools and broken calls alone", () => {
+  const same = (t: string) => assert.deepEqual(salvageTextToolCalls(t, ["suggest_next"]), { text: t, calls: [] });
+  same("I might use suggest_next later.");
+  same(`other_tool{a:${GQ}b${GQ}}`);
+  same(`my_suggest_next{agent_id:${GQ}x${GQ}}`);
+  same(`suggest_next{agent_id:${GQ}never closed}`);
+  same("suggest_next{agent_id}");
+});
+
+test("the provider uses recovery only when no real tool call came back", async () => {
+  const body = (extra: object) =>
+    json({ message: { content: `Answer.\nsuggest_next{agent_id:${GQ}a${GQ},reason:${GQ}b${GQ}}`, ...extra }, done_reason: "stop" });
+  const tools = [{ name: "suggest_next", description: "d", inputSchema: { type: "object" as const, properties: {} } }];
+  const recovered = await createOllamaProvider({ model: "m", fetch: fakeFetch(() => body({})) }).complete({ system: "", messages: [], tools });
+  assert.equal(recovered.text, "Answer.");
+  assert.deepEqual(recovered.toolCalls.map((c) => c.input), [{ agent_id: "a", reason: "b" }]);
+  const real = await createOllamaProvider({
+    model: "m",
+    fetch: fakeFetch(() => body({ tool_calls: [{ function: { name: "suggest_next", arguments: { agent_id: "z", reason: "r" } } }] })),
+  }).complete({ system: "", messages: [], tools });
+  assert.ok(real.text.includes("suggest_next{"));
+  assert.deepEqual(real.toolCalls.map((c) => c.input), [{ agent_id: "z", reason: "r" }]);
+  // No tools offered: nothing to recover.
+  const none = await createOllamaProvider({ model: "m", fetch: fakeFetch(() => body({})) }).complete({ system: "", messages: [], tools: [] });
+  assert.deepEqual(none.toolCalls, []);
 });

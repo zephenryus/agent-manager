@@ -78,19 +78,108 @@ export function createOllamaProvider(opts: OllamaOptions): Provider {
       if (!res.ok) throw await translateHttpError(res, opts.model);
 
       const data = (await res.json()) as OllamaChatResponse;
-      const toolCalls = (data.message?.tool_calls ?? []).map((c, i) => ({
-        id: c.id ?? `call_${i}`,
-        name: c.function?.name ?? "",
-        input: parseArguments(c.function?.arguments),
-      }));
+      let text = data.message?.content ?? "";
+      let toolCalls = (data.message?.tool_calls ?? [])
+        .map((c, i) => ({
+          id: c.id ?? `call_${i}`,
+          name: c.function?.name ?? "",
+          input: parseArguments(c.function?.arguments),
+        }))
+        .filter((c) => c.name !== "");
+      if (toolCalls.length === 0) {
+        // Sometimes the model writes its call as text in its own syntax and Ollama does not convert it.
+        const salvaged = salvageTextToolCalls(text, req.tools.map((t) => t.name));
+        if (salvaged.calls.length > 0) {
+          text = salvaged.text;
+          toolCalls = salvaged.calls;
+        }
+      }
       return {
-        text: data.message?.content ?? "",
-        toolCalls: toolCalls.filter((c) => c.name !== ""),
+        text,
+        toolCalls,
         usage: { inputTokens: data.prompt_eval_count ?? 0, outputTokens: data.eval_count ?? 0 },
         ...(data.done_reason !== undefined ? { stopReason: data.done_reason } : {}),
       };
     },
   };
+}
+
+const GEMMA_QUOTE = '<|"|>';
+
+/**
+ * Recovers tool calls a model wrote as plain text, in Gemma's own syntax:
+ *   suggest_next{agent_id:<|"|>research-lead<|"|>,reason:<|"|>Why.<|"|>}
+ * Only names of tools this request offered are accepted, and a call that does not parse cleanly is left in
+ * the text. The recovered calls are removed from the text so the reply reads normally.
+ */
+export function salvageTextToolCalls(
+  text: string,
+  names: string[],
+): { text: string; calls: { id: string; name: string; input: Record<string, unknown> }[] } {
+  const calls: { id: string; name: string; input: Record<string, unknown> }[] = [];
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    const hit = names
+      .map((name) => ({ name, at: findCall(text, name, i) }))
+      .filter((h) => h.at >= 0)
+      .sort((a, b) => a.at - b.at)[0];
+    if (!hit) break;
+    const open = hit.at + hit.name.length; // index of "{"
+    const parsed = parseNativeArgs(text, open + 1);
+    if (!parsed) {
+      out += text.slice(i, open + 1);
+      i = open + 1;
+      continue;
+    }
+    out += text.slice(i, hit.at).replace(/(?:<\|?tool_call\|?>\s*)?(?:call:)?$/, "");
+    calls.push({ id: `call_${calls.length}`, name: hit.name, input: parsed.args });
+    i = parsed.end;
+    const tail = /^\s*(?:<\|?tool_call\|?>)?/.exec(text.slice(i));
+    if (tail) i += tail[0].length;
+  }
+  out += text.slice(i);
+  return calls.length > 0 ? { text: out.trim(), calls } : { text, calls };
+}
+
+/** Index of `name{` in text at or after `from`, where `name` is not the tail of a longer word. */
+function findCall(text: string, name: string, from: number): number {
+  let at = text.indexOf(`${name}{`, from);
+  while (at > 0 && /[\w]/.test(text[at - 1]!)) at = text.indexOf(`${name}{`, at + 1);
+  return at;
+}
+
+function parseNativeArgs(text: string, start: number): { args: Record<string, unknown>; end: number } | null {
+  const args: Record<string, unknown> = {};
+  let pos = start;
+  for (;;) {
+    while (pos < text.length && /[\s,]/.test(text[pos]!)) pos++;
+    if (text[pos] === "}") return { args, end: pos + 1 };
+    const key = /^[A-Za-z_][\w-]*/.exec(text.slice(pos));
+    if (!key || text[pos + key[0].length] !== ":") return null;
+    pos += key[0].length + 1;
+    if (text.startsWith(GEMMA_QUOTE, pos)) {
+      const close = text.indexOf(GEMMA_QUOTE, pos + GEMMA_QUOTE.length);
+      if (close < 0) return null;
+      args[key[0]] = text.slice(pos + GEMMA_QUOTE.length, close);
+      pos = close + GEMMA_QUOTE.length;
+    } else if (text[pos] === '"') {
+      let end = pos + 1;
+      while (end < text.length && (text[end] !== '"' || text[end - 1] === "\\")) end++;
+      if (end >= text.length) return null;
+      try {
+        args[key[0]] = JSON.parse(text.slice(pos, end + 1));
+      } catch {
+        return null;
+      }
+      pos = end + 1;
+    } else {
+      const bare = /^[^,}]*/.exec(text.slice(pos))![0].trim();
+      if (bare === "") return null;
+      args[key[0]] = bare === "true" ? true : bare === "false" ? false : /^-?\d+(\.\d+)?$/.test(bare) ? Number(bare) : bare;
+      pos += /^[^,}]*/.exec(text.slice(pos))![0].length;
+    }
+  }
 }
 
 function parseArguments(args: unknown): Record<string, unknown> {
