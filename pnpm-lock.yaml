@@ -27,6 +27,21 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
+  packages/server:
+    dependencies:
+      '@am/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.5
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/web: {}
+
 packages:
 
   '@ai-sdk/amazon-bedrock@3.0.141':
