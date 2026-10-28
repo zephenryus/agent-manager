@@ -87,7 +87,8 @@ test("dm mode says private chat and omits the room hint", () => {
 
 test("notes and the focus board appear only when present", () => {
   const plain = buildContext(input([e("user", "hi")])).system;
-  assert.doesNotMatch(plain, /pinned notes/);
+  assert.doesNotMatch(plain, /## Your pinned notes/);
+  assert.doesNotMatch(plain, /## Your recent log/);
   assert.doesNotMatch(plain, /Board in focus/);
 
   const rich = buildContext(
@@ -100,6 +101,19 @@ test("notes and the focus board appear only when present", () => {
   assert.match(rich, /Your pinned notes[^\n]*\nTop fact\nSecond fact/);
   assert.match(rich, /Your recent log[^\n]*\n- 2026-10-27 learned x/);
   assert.match(rich, /Board in focus: pi\.md\n- PI-1 \[active\] Goal$/);
+});
+
+test("room prompt tells the agent to answer first and treat suggest_next as an extra", () => {
+  const { system } = buildContext(input([e("user", "hi")]));
+  assert.match(system, /Always answer the request yourself/);
+  assert.match(system, /never replaces your answer/);
+});
+
+test("the memory hint appears only for agents that have notes tools", () => {
+  const withNotes = agent("research-lead", "Research lead", { tools: ["notes_head", "notes_append"] });
+  const hint = /do not call notes_head or notes_tail to see it/;
+  assert.match(buildContext(input([e("user", "hi")], { agent: withNotes })).system, hint);
+  assert.doesNotMatch(buildContext(input([e("user", "hi")])).system, hint);
 });
 
 test("retired teammates are not listed", () => {

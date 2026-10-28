@@ -13,8 +13,8 @@ export function createSuggestTool(
   return {
     name: "suggest_next",
     description:
-      "Suggest that the user hear from another teammate next. Use it when someone else's expertise would help. " +
-      "This does not run that teammate; the user decides.",
+      "OPTIONAL extra, used only AFTER you have fully answered the request in your reply. Suggests that the user " +
+      "hear from another teammate next. It never replaces your answer and does not run that teammate; the user decides.",
     inputSchema: {
       type: "object",
       properties: {

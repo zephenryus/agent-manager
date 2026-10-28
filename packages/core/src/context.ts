@@ -45,10 +45,19 @@ function buildSystem(input: ContextInput): string {
   sections.push(
     mode === "room"
       ? `## Where you are\nYou are in the team room with ${user}. Teammates may reply too, so keep your answer ` +
-          `short and do not repeat what others said. If another teammate should weigh in, call suggest_next ` +
-          `instead of answering for them.`
+          `short and do not repeat what others said. Always answer the request yourself, in your own reply. ` +
+          `Only after you have answered, if another teammate's expertise would clearly help, you may also call ` +
+          `suggest_next. It is an extra and never replaces your answer.`
       : `## Where you are\nYou are in a private chat with ${user}. Keep your answer short and useful.`,
   );
+
+  if (agent.tools.some((t) => t.startsWith("notes_"))) {
+    sections.push(
+      `## How your memory works\nWhatever pinned notes and recent log you have is already included below, ` +
+        `so do not call notes_head or notes_tail to see it. Use those only to read further back. ` +
+        `Use notes_append only for something genuinely worth remembering later.`,
+    );
+  }
 
   if (pinned.length > 0) {
     sections.push(`## Your pinned notes (standing knowledge, most important first)\n${pinned.join("\n")}`);
