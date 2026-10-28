@@ -13,7 +13,8 @@ const els = {
   note: $("channel-note"), messages: $("messages"), form: $("composer"), input: $("input"), send: $("send"),
   hint: $("composer-hint"), banner: $("banner"), bannerText: $("banner-text"), bannerHint: $("banner-hint"),
   bannerClose: $("banner-close"), boardSelect: $("board-select"), board: $("board"), marker: $("marker"),
-  ink: $("ink"), tray: $("tray-text"),
+  ink: $("ink"), tray: $("tray-text"), wall: $("whiteboard"), issues: $("issues"), inbox: $("inbox"),
+  inboxBadge: $("inbox-badge"), inboxTab: $("inbox-tab"),
 };
 
 const state = {
@@ -29,6 +30,11 @@ const state = {
   focus: null,
   budget: null,
   pending: false,
+  boardInfo: [],
+  itemBoards: new Map(), // item id -> board name
+  wallView: "board",
+  approvals: [], // every request, oldest first
+  flash: null, // item id to scroll to after the next board load
 };
 
 const el = (tag, props = {}, ...kids) => {
@@ -216,25 +222,163 @@ const defaultHint = () =>
 async function loadBoard() {
   if (!state.focus) {
     els.board.innerHTML = '<p class="wb-empty">No board yet. Add a markdown file to the boards folder in your vault.</p>';
+    renderIssues([]);
     return;
   }
   try {
-    const { text } = await api(`/api/board?name=${encodeURIComponent(state.focus)}`);
+    const { text, issues } = await api(`/api/board?name=${encodeURIComponent(state.focus)}`);
     els.board.innerHTML = renderBoard(text);
+    renderIssues(issues ?? []);
+    if (state.flash) {
+      const row = els.board.querySelector(`[data-id="${CSS.escape(state.flash)}"]`);
+      state.flash = null;
+      if (row) {
+        row.scrollIntoView({ block: "center" });
+        row.classList.add("flash");
+      }
+    }
   } catch (err) {
     els.board.innerHTML = "";
     els.board.append(el("p", { class: "wb-empty", text: err.message }));
+    renderIssues([]);
   }
 }
 
+function renderIssues(issues) {
+  els.issues.hidden = issues.length === 0;
+  if (issues.length === 0) return;
+  els.issues.replaceChildren(
+    el("p", { text: issues.length === 1 ? "1 thing to check on this board" : `${issues.length} things to check on this board` }),
+    el("ul", {}, ...issues.map((i) => el("li", { text: i.message }))),
+  );
+}
+
+const LEVEL_LABELS = { pi: "PI goals", sprint: "Sprint", task: "Tasks" };
+
 function renderBoardSelect(boards) {
-  els.boardSelect.replaceChildren(...boards.map((b) => el("option", { value: b, text: b.replace(/\.md$/, ""), selected: b === state.focus })));
+  const info = new Map(state.boardInfo.map((b) => [b.name, b]));
+  const option = (name) => {
+    const title = info.get(name)?.title ?? name.replace(/\.md$/, "");
+    return el("option", { value: name, text: title, selected: name === state.focus });
+  };
+  const groups = [];
+  for (const level of [...Object.keys(LEVEL_LABELS), null]) {
+    const names = boards.filter((n) => (info.get(n)?.level ?? null) === level);
+    if (names.length > 0) groups.push(el("optgroup", { label: level ? LEVEL_LABELS[level] : "Other" }, ...names.map(option)));
+  }
+  els.boardSelect.replaceChildren(...groups);
   els.boardSelect.disabled = boards.length === 0;
 }
 els.boardSelect.addEventListener("change", () => {
   state.focus = els.boardSelect.value;
   loadBoard();
 });
+
+/* A parent id on an item jumps to the board that holds it. */
+els.board.addEventListener("click", (e) => {
+  const btn = e.target instanceof Element ? e.target.closest(".goto") : null;
+  if (!btn) return;
+  const id = btn.dataset.goto;
+  const board = state.itemBoards.get(id);
+  if (!board) return;
+  state.flash = id;
+  state.focus = board;
+  els.boardSelect.value = board;
+  loadBoard();
+});
+
+/* ---------- Whiteboard tabs and approvals inbox ---------- */
+function setWall(view) {
+  state.wallView = view;
+  els.wall.dataset.wall = view;
+  els.inbox.hidden = view !== "inbox";
+  for (const b of document.querySelectorAll("[data-wall]")) {
+    if (b.classList.contains("wb-tab")) b.setAttribute("aria-pressed", String(b.dataset.wall === view));
+  }
+  if (view === "inbox") loadInbox();
+}
+for (const btn of document.querySelectorAll(".wb-tab")) btn.addEventListener("click", () => setWall(btn.dataset.wall));
+
+function setPending(n) {
+  els.inboxBadge.hidden = n === 0;
+  els.inboxBadge.textContent = String(n);
+  els.inboxTab.setAttribute("aria-label", n === 0 ? "Inbox, nothing waiting" : `Inbox, ${n} waiting`);
+}
+
+async function loadInbox() {
+  try {
+    const { approvals } = await api("/api/approvals?status=all");
+    state.approvals = approvals;
+    setPending(approvals.filter((a) => a.status === "pending").length);
+    renderInbox();
+  } catch (err) {
+    els.inbox.replaceChildren(el("p", { class: "wb-empty", text: err.message }));
+  }
+}
+
+const boardTitle = (name) => state.boardInfo.find((b) => b.name === name)?.title ?? name.replace(/\.md$/, "");
+
+function renderInbox() {
+  const pending = state.approvals.filter((a) => a.status === "pending");
+  const decided = state.approvals.filter((a) => a.status !== "pending").reverse();
+  const nodes = [el("h2", { text: "Waiting for approval" })];
+  if (pending.length === 0) nodes.push(el("p", { class: "wb-empty", text: "Nothing is waiting. Requests from your team will show up here." }));
+  for (const ap of pending) nodes.push(approvalCard(ap));
+  if (decided.length > 0) {
+    nodes.push(
+      el("details", { class: "decided" },
+        el("summary", { text: `Decided (${decided.length})` }),
+        el("ul", {}, ...decided.slice(0, 20).map((a) => {
+          const last = a.history?.[a.history.length - 1];
+          const by = last ? ` by ${nameOf(last.by)}` : "";
+          const reason = last?.reason ? `: ${last.reason}` : "";
+          return el("li", { text: `${a.id} ${a.status}${by}. ${a.summary}${reason}` });
+        })),
+      ),
+    );
+  }
+  els.inbox.replaceChildren(...nodes);
+}
+
+function approvalCard(ap) {
+  const chain = ap.approvers.map((who, i) => {
+    const name = nameOf(who);
+    return i < ap.stage ? `${name} (approved)` : name;
+  });
+  const reason = el("input", { type: "text", placeholder: "Reason (optional)", "aria-label": `Reason for ${ap.id}`, maxlength: "300" });
+  const approve = el("button", { type: "button", class: "approve", title: "Approve and apply the change", text: "Approve" });
+  const reject = el("button", { type: "button", text: "Reject" });
+  const error = el("p", { class: "ap-error", role: "alert", hidden: true });
+
+  const decide = async (decision) => {
+    approve.disabled = reject.disabled = true;
+    error.hidden = true;
+    try {
+      await api(`/api/approvals/${encodeURIComponent(ap.id)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decision, reason: reason.value }),
+      });
+      await loadInbox();
+      if (decision === "approve") loadBoard();
+    } catch (err) {
+      approve.disabled = reject.disabled = false;
+      error.textContent = err.status === 409 && err.kind === undefined ? "The team is busy. Try again in a moment." : err.message;
+      error.hidden = false;
+    }
+  };
+  approve.addEventListener("click", () => decide("approve"));
+  reject.addEventListener("click", () => decide("reject"));
+
+  return el("div", { class: "ap", "data-id": ap.id },
+    el("p", { class: "ap-summary", text: ap.summary }),
+    el("p", { class: "ap-meta", text: `${ap.id}: asked by ${nameOf(ap.actor)} on ${boardTitle(ap.board)}, ${fmtTime(ap.created)}` }),
+    ap.why ? el("p", { class: "ap-why", text: `"${ap.why}"` }) : null,
+    el("p", { class: "ap-needs", text: `${ap.needed}. Goes through: ${chain.join(", then ")}.` }),
+    el("div", { class: "ap-actions" }, reason, approve, reject),
+    error,
+  );
+}
 
 /* ---------- Token meter ---------- */
 function renderBudget(b) {
@@ -340,6 +484,14 @@ function connect() {
   });
   es.addEventListener("room", (e) => onRoomEvent(JSON.parse(e.data)));
   es.addEventListener("budget", (e) => renderBudget(JSON.parse(e.data)));
+  es.addEventListener("approvals", (e) => {
+    setPending(JSON.parse(e.data).pending);
+    if (state.wallView === "inbox") loadInbox();
+  });
+  es.addEventListener("board", () => {
+    loadBoard();
+    refreshState(false);
+  });
   es.addEventListener("busy", async (e) => {
     const { busy } = JSON.parse(e.data);
     setBusy(busy);
@@ -367,6 +519,9 @@ async function refreshState(reloadChannel) {
   state.agents = s.agents;
   state.byId = new Map(s.agents.map((a) => [a.id, a]));
   els.demo.hidden = !s.demo;
+  state.boardInfo = s.boardInfo ?? [];
+  state.itemBoards = new Map(state.boardInfo.flatMap((b) => b.items.map((id) => [id, b.name])));
+  setPending(s.approvals ?? 0);
   if (!state.focus || !s.boards.includes(state.focus)) state.focus = s.boards.includes(s.defaultBoard) ? s.defaultBoard : s.boards[0] ?? null;
   renderBoardSelect(s.boards);
   renderBudget(s.budget);

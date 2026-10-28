@@ -5,9 +5,11 @@ import {
   ApprovalError,
   BudgetError,
   ProviderAuthError,
+  checkHierarchy,
   createRoom,
   listApprovals,
   listBoardNames,
+  loadBoards,
   readTail,
   resolveApproval,
 } from "@am/core";
@@ -234,6 +236,12 @@ export function createApp(opts: AppOptions): App {
         demo: opts.demo === true,
         agents: rosterView(),
         boards: await listBoards(),
+        boardInfo: (await loadBoards(opts.vault)).map((b) => ({
+          name: b.name,
+          level: b.level,
+          title: b.title,
+          items: b.items.map((i) => i.id),
+        })),
         approvals: await pendingCount(),
         defaultBoard: opts.defaultBoard,
         budget: await opts.budget.snapshot(),
@@ -260,7 +268,10 @@ export function createApp(opts: AppOptions): App {
         throw new HttpError(400, (err as Error).message);
       }
       try {
-        json(res, 200, { name, text: await readFile(path, "utf8") });
+        const text = await readFile(path, "utf8");
+        // Problems with this board's parent links, so the UI can point at them. Reported only, never fixed.
+        const issues = checkHierarchy(await loadBoards(opts.vault)).filter((i) => i.board === name);
+        json(res, 200, { name, text, issues });
       } catch (err) {
         if ((err as { code?: string }).code === "ENOENT") throw new HttpError(404, `No board named "${name}"`);
         throw err;

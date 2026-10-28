@@ -113,6 +113,7 @@ export function renderMarkdown(text, options = {}) {
   return html.join("\n");
 }
 
+const ITEM_ID = /^[A-Z][A-Z0-9]*-\d+$/;
 const ITEM = /^([A-Z][A-Z0-9]*-\d+)\s+\[(proposed|active|done|dropped)\]\s+(.*)$/;
 
 /** Boards: goal lines ("PI-1 [active] Title | owner: x") become rows with a status mark. */
@@ -127,11 +128,18 @@ export function renderBoard(text) {
       const fields = extras
         .map((e) => {
           const k = e.indexOf(":");
-          return k > 0 ? `<span class="field"><b>${renderInline(e.slice(0, k).trim())}</b> ${renderInline(e.slice(k + 1).trim())}</span>` : "";
+          if (k <= 0) return "";
+          const key = e.slice(0, k).trim();
+          const value = e.slice(k + 1).trim();
+          // A parent that is an item id becomes a button that jumps to it (no links in boards, by design).
+          const shown = key === "parent" && ITEM_ID.test(value)
+            ? `<button type="button" class="goto" data-goto="${value}">${value}</button>`
+            : renderInline(value);
+          return `<span class="field"><b>${renderInline(key)}</b> ${shown}</span>`;
         })
         .join("");
       return (
-        `<li class="item" data-status="${status}"><span class="mark" aria-hidden="true"></span>` +
+        `<li class="item" data-status="${status}" data-id="${id}"><span class="mark" aria-hidden="true"></span>` +
         `<span class="item-main"><span class="item-id">${id}</span> <span class="item-title">${renderInline(title.trim())}</span>` +
         `<span class="item-status">${status}</span>${fields ? `<span class="fields">${fields}</span>` : ""}</span></li>`
       );

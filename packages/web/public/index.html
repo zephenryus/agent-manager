@@ -45,12 +45,20 @@
   </main>
 
   <aside class="wall" aria-label="Board">
-    <section class="whiteboard">
+    <section class="whiteboard" id="whiteboard" data-wall="board">
       <header class="wb-head">
-        <label for="board-select">Teammates are looking at</label>
-        <select id="board-select"></select>
+        <div class="wb-tabs" role="group" aria-label="Whiteboard view">
+          <button type="button" class="wb-tab" data-wall="board" aria-pressed="true">Board</button>
+          <button type="button" class="wb-tab" id="inbox-tab" data-wall="inbox" aria-pressed="false">Inbox <span class="badge" id="inbox-badge" hidden></span></button>
+        </div>
+        <div class="wb-pick">
+          <label for="board-select">Teammates are looking at</label>
+          <select id="board-select"></select>
+        </div>
       </header>
+      <div class="issues" id="issues" hidden></div>
       <article class="wb-body" id="board" tabindex="0"></article>
+      <section class="wb-body inbox" id="inbox" tabindex="0" aria-label="Approvals inbox" hidden></section>
       <footer class="tray" id="tray">
         <div class="marker" id="marker" data-state="ok" role="meter" aria-label="Tokens used today" aria-valuemin="0">
           <span class="cap"></span>

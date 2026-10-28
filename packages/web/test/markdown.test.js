@@ -75,11 +75,19 @@ test("boards: goal lines become status rows; other lines render normally", () =>
     "# PI board\n\n## Goals\n- PI-1 [active] Shorten time to insight | owner: research-lead\n- PI-2 [proposed] <b>x</b>\n- plain bullet\n\n## Notes\nSample.",
   );
   assert.match(html, /^<h2>PI board<\/h2>/);
-  assert.match(html, /<li class="item" data-status="active">/);
+  assert.match(html, /<li class="item" data-status="active" data-id="PI-1">/);
   assert.match(html, /<span class="item-id">PI-1<\/span>/);
   assert.match(html, /<span class="field"><b>owner<\/b> research-lead<\/span>/);
   assert.match(html, /data-status="proposed"/);
   assert.ok(!html.includes("<b>x</b>"));
   assert.match(html, /<li>plain bullet<\/li>/);
   assert.match(html, /<h3>Notes<\/h3>/);
+});
+
+test("a parent that is an item id becomes a jump button; other parents stay text", () => {
+  const html = renderBoard("- SP-1 [active] Mid | parent: PI-1\n- PI-1 [active] Top | parent: Q4\n- SP-2 [active] Odd | parent: <b>x</b>");
+  assert.match(html, /<button type="button" class="goto" data-goto="PI-1">PI-1<\/button>/);
+  assert.match(html, /<b>parent<\/b> Q4<\/span>/);
+  assert.ok(!html.includes("<b>x</b>"));
+  assert.equal((html.match(/class="goto"/g) ?? []).length, 1);
 });

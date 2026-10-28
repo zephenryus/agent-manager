@@ -493,3 +493,24 @@ test("approving needs a same-origin JSON request", async () => {
     await h.close();
   }
 });
+
+test("state describes each board, and a board comes with its hierarchy problems", async () => {
+  const h = await start();
+  try {
+    const s = (await (await fetch(`${h.base}/api/state`)).json()) as Record<string, any>;
+    assert.deepEqual(s.boardInfo.map((b: any) => [b.name, b.level]), [
+      ["pi.md", "pi"],
+      ["sprint.md", "sprint"],
+      ["tasks/interview-synthesis.md", "task"],
+    ]);
+    assert.deepEqual(s.boardInfo[1].items, ["SP-1", "SP-2"]);
+    assert.match(s.boardInfo[0].title, /PI board/);
+    const clean = (await (await fetch(`${h.base}/api/board?name=sprint.md`)).json()) as any;
+    assert.deepEqual(clean.issues, []);
+    await writeFile(join(h.vaultRoot, "boards", "sprint.md"), "- SP-1 [active] Lost | parent: PI-9\n");
+    const bad = (await (await fetch(`${h.base}/api/board?name=sprint.md`)).json()) as any;
+    assert.deepEqual(bad.issues.map((i: any) => [i.itemId, i.kind]), [["SP-1", "unknown_parent"]]);
+  } finally {
+    await h.close();
+  }
+});
