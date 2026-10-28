@@ -11,6 +11,7 @@ export * from "./files.ts";
 export * from "./frontmatter.ts";
 export * from "./notes.ts";
 export * from "./notesTools.ts";
+export * from "./permissions.ts";
 export * from "./providers/fake.ts";
 export * from "./room.ts";
 export * from "./roomTools.ts";
