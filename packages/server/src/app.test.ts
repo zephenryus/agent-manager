@@ -387,3 +387,109 @@ test("static files are served and cannot escape the public folder", async () => 
     await h.close();
   }
 });
+
+const decide = (h: Harness, id: string, body: unknown) =>
+  fetch(`${h.base}/api/approvals/${id}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+async function fileRequest(h: Harness) {
+  const { createApproval } = await import("@am/core");
+  return createApproval(openVault(h.vaultRoot), {
+    actor: "synthesizer",
+    board: "sprint.md",
+    level: "sprint",
+    why: "More interviews",
+    change: { kind: "add", title: "Interview more users", status: "proposed", fields: { parent: "PI-1" } },
+    approvers: ["floor-manager"],
+    needed: "Sprint board changes go to the Floor manager",
+  });
+}
+
+test("the inbox lists requests, state counts the pending ones, and approving writes and commits", async () => {
+  const h = await start();
+  try {
+    assert.deepEqual(((await (await fetch(`${h.base}/api/approvals`)).json()) as any).approvals, []);
+    const ap = await fileRequest(h);
+    const state = (await (await fetch(`${h.base}/api/state`)).json()) as Record<string, any>;
+    assert.equal(state.approvals, 1);
+    const list = (await (await fetch(`${h.base}/api/approvals`)).json()) as any;
+    assert.equal(list.approvals[0].id, ap.id);
+    assert.equal(list.approvals[0].summary, 'Add proposed item "Interview more users" (parent: PI-1)');
+
+    const res = await decide(h, ap.id, { decision: "approve", reason: "ok" });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as any;
+    assert.equal(body.approval.status, "approved");
+    assert.equal(body.saved, "abc1234");
+    assert.match(h.commits.at(-1)!, /^Approvals: approved AP-1/);
+    const board = (await (await fetch(`${h.base}/api/board?name=sprint.md`)).json()) as { text: string };
+    assert.match(board.text, /SP-3 \[proposed\] Interview more users/);
+    assert.equal(((await (await fetch(`${h.base}/api/state`)).json()) as any).approvals, 0);
+    assert.equal(((await (await fetch(`${h.base}/api/approvals?status=approved`)).json()) as any).approvals.length, 1);
+  } finally {
+    await h.close();
+  }
+});
+
+test("rejecting leaves the board alone; bad decisions get clear errors", async () => {
+  const h = await start();
+  try {
+    const ap = await fileRequest(h);
+    assert.equal((await decide(h, ap.id, { decision: "maybe" })).status, 400);
+    assert.equal((await decide(h, ap.id, { decision: "reject", reason: 5 })).status, 400);
+    assert.equal((await decide(h, "AP-99", { decision: "approve" })).status, 404);
+    assert.equal((await decide(h, ap.id, { decision: "reject", reason: "no" })).status, 200);
+    assert.equal((await decide(h, ap.id, { decision: "approve" })).status, 409);
+    const board = (await (await fetch(`${h.base}/api/board?name=sprint.md`)).json()) as { text: string };
+    assert.doesNotMatch(board.text, /Interview more users/);
+    assert.equal((await fetch(`${h.base}/api/approvals?status=bogus`)).status, 400);
+  } finally {
+    await h.close();
+  }
+});
+
+test("a stale request comes back 409 with kind stale and stays pending", async () => {
+  const h = await start();
+  try {
+    const { createApproval } = await import("@am/core");
+    const ap = await createApproval(openVault(h.vaultRoot), {
+      actor: "synthesizer",
+      board: "pi.md",
+      level: "pi",
+      why: "",
+      change: { kind: "set_status", id: "PI-9", status: "done" },
+      approvers: ["user"],
+      needed: "x",
+    });
+    const res = await decide(h, ap.id, { decision: "approve" });
+    assert.equal(res.status, 409);
+    assert.equal(((await res.json()) as any).kind, "stale");
+    assert.equal(((await (await fetch(`${h.base}/api/state`)).json()) as any).approvals, 1);
+  } finally {
+    await h.close();
+  }
+});
+
+test("approving needs a same-origin JSON request", async () => {
+  const h = await start();
+  try {
+    const ap = await fileRequest(h);
+    const evil = await fetch(`${h.base}/api/approvals/${ap.id}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "http://evil.example" },
+      body: JSON.stringify({ decision: "approve" }),
+    });
+    assert.equal(evil.status, 403);
+    const plain = await fetch(`${h.base}/api/approvals/${ap.id}`, {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: JSON.stringify({ decision: "approve" }),
+    });
+    assert.equal(plain.status, 415);
+  } finally {
+    await h.close();
+  }
+});

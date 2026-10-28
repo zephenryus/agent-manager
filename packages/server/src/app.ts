@@ -2,15 +2,19 @@ import { readFile, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, resolve, sep } from "node:path";
 import {
+  ApprovalError,
   BudgetError,
   ProviderAuthError,
   createRoom,
+  listApprovals,
   listBoardNames,
   readTail,
+  resolveApproval,
 } from "@am/core";
 import type {
   AgentDef,
   AgentState,
+  ApprovalStatus,
   Budget,
   BudgetSnapshot,
   ModelTier,
@@ -132,6 +136,8 @@ export function createApp(opts: AppOptions): App {
     }));
 
   const listBoards = () => listBoardNames(opts.vault);
+  const pendingCount = async () => (await listApprovals(opts.vault, { status: "pending" })).length;
+  const broadcastApprovals = async () => broadcast("approvals", { pending: await pendingCount() });
 
   function checkHost(req: IncomingMessage) {
     const host = (req.headers.host ?? "").toLowerCase();
@@ -228,6 +234,7 @@ export function createApp(opts: AppOptions): App {
         demo: opts.demo === true,
         agents: rosterView(),
         boards: await listBoards(),
+        approvals: await pendingCount(),
         defaultBoard: opts.defaultBoard,
         budget: await opts.budget.snapshot(),
         busy,
@@ -297,6 +304,7 @@ export function createApp(opts: AppOptions): App {
             log(`history: could not save a commit: ${(err as Error).message}`);
           }
         }
+        await broadcastApprovals();
         json(res, 200, {
           ok: true,
           replies: result.replies.map((r) => r.id),
@@ -304,6 +312,53 @@ export function createApp(opts: AppOptions): App {
           usage: result.usage,
           saved,
         });
+      } finally {
+        busy = false;
+        broadcast("busy", { busy: false });
+      }
+      return;
+    }
+
+    if (url.pathname === "/api/approvals" && method === "GET") {
+      const asked = url.searchParams.get("status") ?? "pending";
+      if (asked !== "all" && asked !== "pending" && asked !== "approved" && asked !== "rejected") {
+        throw new HttpError(400, "status must be pending, approved, rejected or all");
+      }
+      const approvals = await listApprovals(opts.vault, asked === "all" ? {} : { status: asked as ApprovalStatus });
+      json(res, 200, { approvals });
+      return;
+    }
+
+    const decide = /^\/api\/approvals\/([^/]+)$/.exec(url.pathname);
+    if (decide && method === "POST") {
+      checkOrigin(req);
+      const body = await readJson(req);
+      if (body.decision !== "approve" && body.decision !== "reject") throw new HttpError(400, 'decision must be "approve" or "reject"');
+      if (body.reason !== undefined && typeof body.reason !== "string") throw new HttpError(400, "reason must be text");
+      // Board files change under an agent's feet if a turn is running, so wait for it to finish.
+      if (busy) throw new HttpError(409, "The team is still working; try again in a moment");
+      busy = true;
+      broadcast("busy", { busy: true });
+      try {
+        const id = decodeURIComponent(decide[1]!);
+        const approval = await resolveApproval({
+          vault: opts.vault,
+          id,
+          decision: body.decision,
+          by: "user",
+          ...(typeof body.reason === "string" ? { reason: body.reason } : {}),
+        });
+        let saved: string | null = null;
+        if (opts.git) {
+          try {
+            saved = await opts.git.commit(`Approvals: ${body.decision === "approve" ? "approved" : "rejected"} ${id} (${approval.summary})`);
+          } catch (err) {
+            log(`history: could not save a commit: ${(err as Error).message}`);
+          }
+        }
+        await broadcastApprovals();
+        if (approval.status === "approved") broadcast("board", { name: approval.board });
+        json(res, 200, { ok: true, approval, saved });
       } finally {
         busy = false;
         broadcast("busy", { busy: false });
@@ -324,6 +379,9 @@ export function createApp(opts: AppOptions): App {
         if (err instanceof HttpError) {
           status = err.status;
           body = { error: err.message, ...err.extra };
+        } else if (err instanceof ApprovalError) {
+          status = { not_found: 404, not_pending: 409, not_allowed: 403, stale: 409 }[err.code];
+          body = { error: err.message, kind: err.code };
         } else if (err instanceof ProviderAuthError) {
           status = 401;
           body = { error: err.message, hint: err.hint, kind: "auth" };

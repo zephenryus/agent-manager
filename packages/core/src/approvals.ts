@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { describeChange } from "./changes.ts";
+import { applyChange, describeChange } from "./changes.ts";
 import type { Change } from "./changes.ts";
 import type { Level } from "./permissions.ts";
 import { systemClock } from "./transcript.ts";
@@ -8,9 +8,18 @@ import type { Clock } from "./transcript.ts";
 import type { Vault } from "./vault.ts";
 
 // Approval requests are plain JSON files in <vault>/approvals, one per request, so git history shows
-// who asked for what and who said yes. This slice only creates and reads them; approving comes later.
+// who asked for what and who said yes.
 
 export type ApprovalStatus = "pending" | "approved" | "rejected";
+
+export type HistoryEntry = {
+  /** "user" or an agent id. */
+  by: string;
+  /** ISO timestamp. */
+  at: string;
+  action: "approve" | "reject";
+  reason?: string;
+};
 
 export type Approval = {
   id: string;
@@ -33,6 +42,8 @@ export type Approval = {
   stage: number;
   /** Why the system required approval. */
   needed: string;
+  /** Every decision so far, oldest first. An approval that passed up the chain has an entry per step. */
+  history?: HistoryEntry[];
 };
 
 export type NewApproval = Pick<Approval, "actor" | "board" | "level" | "why" | "change" | "approvers" | "needed">;
@@ -94,4 +105,68 @@ export async function listApprovals(vault: Vault, filter: { status?: ApprovalSta
     }
   }
   return out;
+}
+
+export type ApprovalErrorCode = "not_found" | "not_pending" | "not_allowed" | "stale";
+
+export class ApprovalError extends Error {
+  readonly code: ApprovalErrorCode;
+  constructor(code: ApprovalErrorCode, message: string) {
+    super(message);
+    this.name = "ApprovalError";
+    this.code = code;
+  }
+}
+
+export type ResolveInput = {
+  vault: Vault;
+  id: string;
+  decision: "approve" | "reject";
+  /** "user" or an agent id. */
+  by: string;
+  reason?: string;
+  clock?: Clock;
+};
+
+/**
+ * Approve or reject a pending request.
+ * - Only the approver whose turn it is may decide; the user may decide at any stage.
+ * - Approving below the end of the chain passes it up one level and it stays pending.
+ * - Approving at the end (or as the user) writes the change to the board. If the board has moved on so the
+ *   change no longer fits (item gone, parent gone), nothing is written and the request stays pending
+ *   (error "stale"), so it can be rejected.
+ */
+export async function resolveApproval(input: ResolveInput): Promise<Approval> {
+  const { vault, id, decision, by } = input;
+  const clock = input.clock ?? systemClock;
+  const approval = await getApproval(vault, id);
+  if (!approval) throw new ApprovalError("not_found", `No approval request ${id}`);
+  if (approval.status !== "pending") throw new ApprovalError("not_pending", `${id} was already ${approval.status}`);
+  const next = approval.approvers[approval.stage];
+  if (by !== "user" && by !== next) {
+    throw new ApprovalError("not_allowed", `${id} is waiting for ${next ?? "nobody"}, not ${by}`);
+  }
+
+  const entry: HistoryEntry = {
+    by,
+    at: clock.now().toISOString(),
+    action: decision,
+    ...(input.reason !== undefined && input.reason.trim() !== "" ? { reason: input.reason.trim() } : {}),
+  };
+  const updated: Approval = { ...approval, history: [...(approval.history ?? []), entry] };
+
+  if (decision === "reject") {
+    updated.status = "rejected";
+  } else if (by !== "user" && approval.stage < approval.approvers.length - 1) {
+    updated.stage = approval.stage + 1;
+  } else {
+    try {
+      await applyChange({ vault, board: approval.board, change: approval.change, actor: approval.actor });
+    } catch (err) {
+      throw new ApprovalError("stale", `The board has changed since this was requested: ${(err as Error).message}`);
+    }
+    updated.status = "approved";
+  }
+  await writeFile(approvalPath(vault, id), JSON.stringify(updated, null, 2) + "\n", "utf8");
+  return updated;
 }
