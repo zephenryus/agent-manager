@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent manager</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body data-view="room">
+  <nav class="tabs" aria-label="Switch view">
+    <button type="button" data-view-btn="room" aria-pressed="true">Chat</button>
+    <button type="button" data-view-btn="board" aria-pressed="false">Board</button>
+  </nav>
+
+  <main class="room" aria-label="Room">
+    <header class="roster">
+      <div class="roster-top">
+        <button type="button" class="room-btn" id="room-btn" aria-pressed="true">
+          <span>Room</span><span class="unread" id="room-unread" hidden></span>
+        </button>
+        <span class="demo-flag" id="demo-flag" hidden>Demo: pretend model, nothing is saved to your vault</span>
+        <span class="conn" id="conn" hidden>Reconnecting&hellip;</span>
+      </div>
+      <ul class="portraits" id="portraits" aria-label="Team. Choose someone to message them privately."></ul>
+    </header>
+
+    <div class="channel-note" id="channel-note"></div>
+
+    <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Conversation" tabindex="0"></div>
+
+    <form class="composer" id="composer">
+      <div class="banner" id="banner" role="alert" hidden>
+        <p class="banner-text" id="banner-text"></p>
+        <p class="banner-hint" id="banner-hint"></p>
+        <button type="button" class="banner-close" id="banner-close" aria-label="Dismiss">Dismiss</button>
+      </div>
+      <div class="composer-row">
+        <label class="sr-only" for="input">Message</label>
+        <textarea id="input" rows="2" placeholder="Message the room" autocomplete="off"></textarea>
+        <button type="submit" id="send">Send</button>
+      </div>
+      <p class="composer-hint" id="composer-hint">Enter sends. Shift+Enter adds a line. Type @ and a name to skip the routing step.</p>
+    </form>
+  </main>
+
+  <aside class="wall" aria-label="Board">
+    <section class="whiteboard">
+      <header class="wb-head">
+        <label for="board-select">Teammates are looking at</label>
+        <select id="board-select"></select>
+      </header>
+      <article class="wb-body" id="board" tabindex="0"></article>
+      <footer class="tray" id="tray">
+        <div class="marker" id="marker" data-state="ok" role="meter" aria-label="Tokens used today" aria-valuemin="0">
+          <span class="cap"></span>
+          <span class="barrel"><span class="ink" id="ink"></span></span>
+          <span class="tip"></span>
+        </div>
+        <p class="tray-text" id="tray-text"></p>
+      </footer>
+    </section>
+  </aside>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

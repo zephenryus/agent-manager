@@ -3,11 +3,15 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.15.0",
-  "engines": { "node": ">=22.18" },
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "spike:fake": "pnpm --filter @am/core spike:fake",
-    "spike:bedrock": "pnpm --filter @am/core spike:bedrock"
+    "spike:bedrock": "pnpm --filter @am/core spike:bedrock",
+    "start": "pnpm --filter @am/server start",
+    "demo": "pnpm --filter @am/server demo"
   }
 }

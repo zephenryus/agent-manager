@@ -2,6 +2,9 @@
 // never pulls in the AI SDK; import it from "./providers/bedrock.ts" where needed.
 export * from "./agents.ts";
 export * from "./board.ts";
+export * from "./budget.ts";
+export * from "./providers/demo.ts";
+export * from "./vaultGit.ts";
 export * from "./boardTools.ts";
 export * from "./context.ts";
 export * from "./files.ts";

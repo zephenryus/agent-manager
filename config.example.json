@@ -6,5 +6,10 @@
   "models": {
     "router": "us.anthropic.claude-haiku-5-5",
     "specialist": "us.anthropic.claude-sonnet-5-5"
-  }
+  },
+  "vaultPath": "~/agent-manager-vault",
+  "userName": "Kevin",
+  "dailyTokenLimit": 200000,
+  "port": 4317,
+  "defaultBoard": "pi.md"
 }
