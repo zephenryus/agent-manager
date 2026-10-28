@@ -20,6 +20,11 @@ transcripts live; it is created on first run (seeded from `sample-vault`) and sh
 It is its own git repo, and every message you send is saved as a commit there. `dailyTokenLimit` is the day's token
 budget (input + output); the pen at the bottom of the board shows what is left, warns at 80% and stops at 100%.
 
+Agent files: each agent gets a personal folder, `workspaces/<agent-id>/`, and the team shares `workspaces/shared/`.
+Agents with the `files_write` tool (listed in their frontmatter) can write only there; everyone with `files_read`
+can read every workspace. `readableFolders` (config, default `["Interviews"]`) adds more read-only folders, and
+`workspaces` is always readable. Lists in agent frontmatter can be inline (`tools: [a, b]`) or block style.
+
 Local model (Ollama, no cloud, no cost): install Ollama, run `ollama pull gemma4:e4b`, copy
 `config.ollama.example.json` to a config of your own, point `vaultPath` at a throwaway vault, and start with
 `node packages/server/src/main.ts --config <your config>`. The router and the specialists can use different models.

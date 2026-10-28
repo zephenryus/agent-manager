@@ -15,6 +15,7 @@ import {
   createLlmRouter,
   createVaultGit,
   ensureBoardFiles,
+  ensureWorkspaces,
   loadAgents,
   openVault,
   withBudget,
@@ -52,6 +53,8 @@ async function seedVault(root: string): Promise<void> {
   }
   // A vault that already has some boards may lack others: add empty ones, never overwrite.
   await ensureBoardFiles(openVault(root));
+  // The shared workspace folder always exists; each agent's own folder appears on its first write.
+  await ensureWorkspaces(openVault(root));
 }
 
 /** Demo only: two fake pending requests, so the inbox has something to approve or reject. */
@@ -82,7 +85,7 @@ async function main() {
   let vaultRoot: string;
   let userName = "You";
   let defaultBoard = "pi.md";
-  let readableFolders = ["Interviews", "artifacts"];
+  let readableFolders = ["Interviews"];
   let dailyLimit = 1_000_000;
   let prices: { inputPerMTok: number; outputPerMTok: number } | undefined;
   let providers: Record<ModelTier, Provider>;

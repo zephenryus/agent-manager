@@ -98,7 +98,7 @@ test("ollama options are read, and mistakes name the field", () => {
 });
 
 test("readableFolders defaults, is validated, and refuses app-owned folders", () => {
-  assert.deepEqual(parseConfig(minimal, "/h").readableFolders, ["Interviews", "artifacts"]);
+  assert.deepEqual(parseConfig(minimal, "/h").readableFolders, ["Interviews"]);
   assert.deepEqual(parseConfig({ ...minimal, readableFolders: ["Research"] }, "/h").readableFolders, ["Research"]);
   assert.deepEqual(parseConfig({ ...minimal, readableFolders: [] }, "/h").readableFolders, []);
   assert.throws(() => parseConfig({ ...minimal, readableFolders: "Interviews" }, "/h"), /readableFolders/);

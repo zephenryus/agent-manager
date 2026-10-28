@@ -6,6 +6,7 @@ import type { FocusBoard } from "./context.ts";
 import { listBoardNames } from "./hierarchy.ts";
 import { createNotes } from "./notes.ts";
 import { createNotesTools } from "./notesTools.ts";
+import { WORKSPACES_DIR, createWorkspaceTools } from "./workspaces.ts";
 import { createSuggestTool } from "./roomTools.ts";
 import { findMentions } from "./router.ts";
 import type { RouteDecision, Router } from "./router.ts";
@@ -25,6 +26,7 @@ export const KNOWN_TOOLS = [
   "board_set_status",
   "files_list",
   "files_read",
+  "files_write",
   "notes_head",
   "notes_tail",
   "notes_append",
@@ -50,7 +52,7 @@ export type RoomOptions = {
   userName?: string;
   clock?: Clock;
   onEvent?: (e: RoomEvent) => void;
-  /** Vault folders agents with the files_* tools may read (read-only), for example ["Interviews"]. */
+  /** Vault folders agents with the files_* tools may read (read-only), for example ["Interviews"]. The workspaces folder is always readable. */
   readableFolders?: string[];
   /** Board (inside <vault>/boards) shown to agents when the user has not chosen a focus. */
   defaultBoard?: string;
@@ -88,9 +90,10 @@ export function createRoom(opts: RoomOptions): Room {
   const windowSize = opts.transcriptWindow ?? 20;
   const active = opts.agents.filter((a) => a.status === "active");
   const byId = new Map(active.map((a) => [a.id, a]));
-  const readable = opts.readableFolders ?? [];
+  // Workspaces are always readable: whatever an agent saves with files_write, everyone can read back.
+  const readable = [...new Set([...(opts.readableFolders ?? []), WORKSPACES_DIR])];
   // Fail at startup, not on the first message, if the folder list names something that must stay private.
-  const fileTools = readable.length > 0 ? createFileTools({ vault: opts.vault, folders: readable }) : [];
+  const fileTools = createFileTools({ vault: opts.vault, folders: readable });
 
   return {
     async send(text, sendOpts = {}) {
@@ -164,7 +167,7 @@ export function createRoom(opts: RoomOptions): Room {
             logTail,
             ...(focus ? { focus } : {}),
             boards,
-            ...(readable.length > 0 ? { readable } : {}),
+            readable,
             mode: sendOpts.dm !== undefined ? "dm" : "room",
             ...(opts.userName ? { userName: opts.userName } : {}),
           });
@@ -252,6 +255,7 @@ function buildTools(agent: AgentDef, deps: ToolDeps): Tool[] {
     ...createNotesTools(deps.notes),
     createSuggestTool(agent.id, deps.validIds, deps.sink),
     ...deps.fileTools,
+    ...createWorkspaceTools({ vault: deps.vault, actor: agent.id }),
     ...createBoardWriteTools({
       vault: deps.vault,
       agents: deps.agents,

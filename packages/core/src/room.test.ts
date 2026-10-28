@@ -86,7 +86,7 @@ test("a routed message produces a reply, a transcript, notes and the right event
   const req = specialist.requests[0]!;
   assert.match(req.system, /You lead customer discovery/);
   assert.deepEqual(req.messages.map((m) => m.role), ["user"]);
-  assert.deepEqual(req.tools.map((t) => t.name).sort(), ["board_add", "board_edit", "board_list", "board_set_status", "notes_append", "notes_head", "notes_pin", "notes_tail", "suggest_next"]);
+  assert.deepEqual(req.tools.map((t) => t.name).sort(), ["board_add", "board_edit", "board_list", "board_set_status", "files_list", "files_read", "files_write", "notes_append", "notes_head", "notes_pin", "notes_tail", "suggest_next"]);
 });
 
 test("an @mention skips the router entirely", async () => {
@@ -308,7 +308,7 @@ test("readable folders give file tools to agents that list them, and the prompt 
     readableFolders: ["Interviews"],
   });
   await room.send("@synthesizer what is in the interviews?");
-  assert.match(specialist.requests[0]!.system, /Folders: Interviews\./);
+  assert.match(specialist.requests[0]!.system, /Folders: Interviews, workspaces\./);
   assert.ok(specialist.requests[0]!.tools.some((t) => t.name === "files_read"));
   assert.match(JSON.stringify(specialist.requests[1]!.messages), /hello from a note/);
 
@@ -321,8 +321,9 @@ test("readable folders give file tools to agents that list them, and the prompt 
     userName: "Kevin",
   });
   await room2.send("@synthesizer hi");
-  assert.ok(!floor.requests[0]!.tools.some((t) => t.name === "files_read"));
-  assert.doesNotMatch(floor.requests[0]!.system, /Files you can read/);
+  // Workspaces are always readable, even with no configured folders.
+  assert.ok(floor.requests[0]!.tools.some((t) => t.name === "files_read"));
+  assert.match(floor.requests[0]!.system, /Folders: workspaces\./);
 });
 
 test("a reserved folder in readableFolders fails when the room is created", async () => {
@@ -341,4 +342,43 @@ test("a reserved folder in readableFolders fails when the room is created", asyn
       }),
     /cannot be made readable/,
   );
+});
+
+test("an agent with files_write saves into shared and its own folder, and is refused elsewhere", async () => {
+  const root = await mkdtemp(join(tmpdir(), "am-room-write-"));
+  const agents = (await loadAgents(SAMPLE_AGENTS, [...KNOWN_TOOLS])).agents;
+  const specialist = createFakeProvider([
+    callTool("w1", "files_write", { path: "workspaces/shared/2026-10-28-themes.md", content: "# Themes\n- export feels risky" }),
+    callTool("w2", "files_write", { path: "workspaces/research-lead/hijack.md", content: "nope" }),
+    reply("Saved it."),
+  ]);
+  const routerProvider = createFakeProvider([]);
+  const room = createRoom({
+    vault: openVault(root),
+    agents,
+    providers: { router: routerProvider, specialist },
+    router: createLlmRouter({ provider: routerProvider, agents, orchestratorId: "floor-manager" }),
+    userName: "Kevin",
+  });
+  await room.send("@synthesizer save the themes");
+  assert.match(specialist.requests[0]!.system, /## Your workspace\nYour own folder is workspaces\/synthesizer\//);
+  assert.ok(specialist.requests[0]!.tools.some((t) => t.name === "files_write"));
+  assert.equal(await readFile(join(root, "workspaces", "shared", "2026-10-28-themes.md"), "utf8"), "# Themes\n- export feels risky\n");
+  const results = JSON.stringify(specialist.requests.map((r) => r.messages));
+  assert.match(results, /Created workspaces\/shared\/2026-10-28-themes\.md/);
+  assert.match(results, /write only inside workspaces\/synthesizer\//);
+  await assert.rejects(() => readFile(join(root, "workspaces", "research-lead", "hijack.md"), "utf8"), /ENOENT/);
+
+  // The Floor manager's sample file does not list files_write, so it never gets the tool or the prompt section.
+  const floor = createFakeProvider([reply("Hi.")]);
+  const room2 = createRoom({
+    vault: openVault(root),
+    agents,
+    providers: { router: routerProvider, specialist: floor },
+    router: createLlmRouter({ provider: routerProvider, agents, orchestratorId: "floor-manager" }),
+    userName: "Kevin",
+  });
+  await room2.send("@floor-manager hi");
+  assert.ok(!floor.requests[0]!.tools.some((t) => t.name === "files_write"));
+  assert.doesNotMatch(floor.requests[0]!.system, /Your workspace/);
 });

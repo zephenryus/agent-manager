@@ -65,7 +65,7 @@ export function expandHome(p: string, home: string = homedir()): string {
 }
 
 function parseReadableFolders(v: unknown): string[] {
-  if (v === undefined) return ["Interviews", "artifacts"];
+  if (v === undefined) return ["Interviews"];
   if (!Array.isArray(v) || v.some((x) => typeof x !== "string")) {
     throw new ConfigError(`config: "readableFolders" must be a list of folder names, like ["Interviews"]`);
   }

@@ -3,9 +3,10 @@ import { extname, isAbsolute, join, resolve, sep } from "node:path";
 import type { Tool } from "./types.ts";
 import type { Vault } from "./vault.ts";
 
-// Read-only access to a few folders in the vault (interview notes, deliverables). Agents get two tools:
+// Read-only access to a few folders in the vault (interview notes, agent workspaces). Agents get two tools:
 // files_list and files_read. Reads come in line windows, like the notes tools, so a long file never lands
-// in the context all at once. Nothing here can write, and nothing can leave the allowed folders.
+// in the context all at once. Nothing here can write (see workspaces.ts for files_write), and nothing can
+// leave the allowed folders.
 
 /** Folders agents can never read, whatever the config says: charters, other agents' notes, chat history. */
 export const RESERVED_FOLDERS = ["agents", "notes", "rooms", "usage", "approvals", "boards"];
@@ -21,7 +22,7 @@ const MAX_LIST_DEPTH = 3;
 
 export type FileToolOptions = {
   vault: Vault;
-  /** Top-level folders inside the vault that agents may read, for example ["Interviews", "artifacts"]. */
+  /** Top-level folders inside the vault that agents may read, for example ["Interviews"]. */
   folders: string[];
 };
 

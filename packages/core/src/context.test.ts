@@ -159,3 +159,11 @@ test("agents with file tools are told which folders they can read", () => {
   assert.doesNotMatch(buildContext(input([e("user", "hi")], { readable: ["Interviews"] })).system, /Files you can read/);
   assert.doesNotMatch(buildContext(input([e("user", "hi")], { agent: agent("a", "A", { tools: ["files_read"] }) })).system, /Files you can read/);
 });
+
+test("agents with files_write are told where they may save files", () => {
+  const writer = buildContext(input([e("user", "hi")], { agent: agent("synthesizer", "Synthesizer", { tools: ["files_write"] }) })).system;
+  assert.match(writer, /## Your workspace/);
+  assert.match(writer, /Your own folder is workspaces\/synthesizer\//);
+  assert.match(writer, /shared folder is workspaces\/shared\//);
+  assert.doesNotMatch(buildContext(input([e("user", "hi")], { agent: agent("a", "A", { tools: ["files_read"] }) })).system, /Your workspace/);
+});
