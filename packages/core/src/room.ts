@@ -94,9 +94,19 @@ export function createRoom(opts: RoomOptions): Room {
       // Validate before anything is written, so a bad focus name cannot leave a half-handled message.
       const focusPath = focusName === undefined ? undefined : opts.vault.boardPath(focusName);
 
-      const recentBefore = await readTail(file, 8);
-      const userEntry = await appendEntry(file, { from: "user", text: message }, clock);
-      emit({ type: "entry", channel, entry: userEntry });
+      let recentBefore = await readTail(file, 8);
+      // A previous send of this same text failed after it was saved (expired creds, say), so it is the
+      // last line and nobody answered it. Reuse it instead of writing a duplicate.
+      const last = recentBefore[recentBefore.length - 1];
+      const retry = last !== undefined && last.from === "user" && last.text === message;
+      let userEntry: TranscriptEntry;
+      if (retry) {
+        userEntry = last;
+        recentBefore = recentBefore.slice(0, -1);
+      } else {
+        userEntry = await appendEntry(file, { from: "user", text: message }, clock);
+        emit({ type: "entry", channel, entry: userEntry });
+      }
 
       let decision: RouteDecision | null = null;
       let responders: string[];

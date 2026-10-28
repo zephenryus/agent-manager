@@ -285,3 +285,10 @@ test("pinned notes written by an agent show up in its next prompt", async () => 
   await room.send("@research-lead thanks");
   assert.match(specialist.requests[2]!.system, /Your pinned notes[^\n]*\nKevin prefers short answers\nUsers are compliance analysts/);
 });
+
+test("resending after a failed send reuses the saved user message instead of duplicating it", async () => {
+  const { room, vault } = await setup({ routerScript: [route(["research-lead"]), route(["research-lead"])] });
+  await assert.rejects(() => room.send("hello"), /script exhausted/);
+  await assert.rejects(() => room.send("hello"), /script exhausted/);
+  assert.deepEqual((await readTail(vault.roomFile, 10)).map((t) => t.from), ["user"]);
+});
