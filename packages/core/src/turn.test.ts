@@ -70,6 +70,59 @@ test("an answer written in the same step as a tool call is not lost to a short c
   );
 });
 
+function terminalTool(name: string, run: Tool["run"] = () => "ok"): Tool {
+  return { name, description: "d", inputSchema: { type: "object", properties: {} }, terminal: true, run };
+}
+
+test("a terminal tool after the answer ends the turn without another model call", async () => {
+  const provider = createFakeProvider([callTool("c1", "ping", {}, "Full answer."), reply("never requested")]);
+  const result = await runTurn({ provider, system: "s", messages: [user("go")], tools: [terminalTool("ping")] });
+  assert.equal(result.text, "Full answer.");
+  assert.equal(result.steps, 1);
+  assert.equal(provider.requests.length, 1);
+  assert.equal(result.stopped, "done");
+  // History stays well-formed: assistant tool call is followed by its tool result.
+  assert.deepEqual(result.produced.map((m) => m.role), ["assistant", "tool"]);
+});
+
+test("a terminal tool with no answer text does not end the turn", async () => {
+  const provider = createFakeProvider([callTool("c1", "ping", {}), reply("Now the answer.")]);
+  const result = await runTurn({ provider, system: "s", messages: [user("go")], tools: [terminalTool("ping")] });
+  assert.equal(result.steps, 2);
+  assert.equal(result.text, "Now the answer.");
+});
+
+test("a failing terminal tool does not end the turn", async () => {
+  const provider = createFakeProvider([callTool("c1", "ping", {}, "Draft."), reply("Fixed.")]);
+  const failing = terminalTool("ping", () => {
+    throw new Error("nope");
+  });
+  const result = await runTurn({ provider, system: "s", messages: [user("go")], tools: [failing] });
+  assert.equal(result.steps, 2);
+  assert.equal(result.text, "Draft.\n\nFixed.");
+});
+
+test("a terminal tool alongside a normal tool does not end the turn", async () => {
+  const provider = createFakeProvider([
+    {
+      text: "Checking.",
+      toolCalls: [
+        { id: "a", name: "ping", input: {} },
+        { id: "b", name: "board_list", input: {} },
+      ],
+      usage: { inputTokens: 1, outputTokens: 1 },
+    },
+    reply("Done."),
+  ]);
+  const result = await runTurn({
+    provider,
+    system: "s",
+    messages: [user("go")],
+    tools: [terminalTool("ping"), ...createBoardTools(await boardCopy())],
+  });
+  assert.equal(result.steps, 2);
+});
+
 test("steps with no text contribute nothing to the final text", async () => {
   const provider = createFakeProvider([callTool("c1", "board_list", {}), callTool("c2", "board_list", {}), reply("Only this.")]);
   const result = await runTurn({

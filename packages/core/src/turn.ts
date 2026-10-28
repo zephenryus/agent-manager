@@ -84,6 +84,13 @@ export async function runTurn(opts: TurnOptions): Promise<TurnResult> {
     const toolMessage: Message = { role: "tool", results };
     history.push(toolMessage);
     produced.push(toolMessage);
+
+    // Answer already written + only terminal tools that all succeeded: nothing left to say.
+    const answered = res.text.trim() !== "";
+    const onlyTerminal = res.toolCalls.every((c) => toolsByName.get(c.name)?.terminal === true);
+    if (answered && onlyTerminal && results.every((r) => r.isError !== true)) {
+      return { text: texts.join("\n\n"), produced, steps, usage, stopped: "done" };
+    }
   }
 
   return { text: texts.join("\n\n"), produced, steps, usage, stopped: "max_steps" };

@@ -147,18 +147,33 @@ test("suggestions from the router and from agents are merged without duplicates 
   ]);
 });
 
-test("the recorded reply keeps the answer even when the model writes it alongside suggest_next", async () => {
-  const { room, vault } = await setup({
+test("an answer written alongside suggest_next is the whole reply, with no extra model call", async () => {
+  const { room, vault, specialist } = await setup({
     specialistScript: [
       callTool("s1", "suggest_next", { agent_id: "research-lead", reason: "needs follow-ups" }, "Theme 1: trust. Theme 2: rework."),
-      reply("I've suggested the Research lead."),
+      reply("I've suggested the Research lead."), // must never be requested
     ],
   });
   const result = await room.send("@synthesizer here are the notes");
-  assert.match(result.replies[0]!.text, /Theme 1: trust\. Theme 2: rework\./);
-  assert.match(result.replies[0]!.text, /I've suggested the Research lead\./);
+  assert.equal(result.replies[0]!.text, "Theme 1: trust. Theme 2: rework.");
+  assert.equal(specialist.requests.length, 1);
+  assert.deepEqual(result.suggestions, [{ agentId: "research-lead", reason: "needs follow-ups" }]);
+  // Two model calls would have cost twice the prompt: one call's usage only.
+  assert.deepEqual(result.usage, { inputTokens: 10, outputTokens: 5 });
   const [, stored] = await readTail(vault.roomFile, 2);
-  assert.match(stored!.text, /Theme 1: trust/);
+  assert.equal(stored!.text, "Theme 1: trust. Theme 2: rework.");
+});
+
+test("suggest_next with no answer text still gets a follow-up call so the agent can answer", async () => {
+  const { room, specialist } = await setup({
+    specialistScript: [
+      callTool("s1", "suggest_next", { agent_id: "research-lead", reason: "r" }), // no text
+      reply("Here is my actual answer."),
+    ],
+  });
+  const result = await room.send("@synthesizer hello");
+  assert.equal(specialist.requests.length, 2);
+  assert.equal(result.replies[0]!.text, "Here is my actual answer.");
 });
 
 test("suggest_next rejects yourself and unknown agents with a readable error", async () => {

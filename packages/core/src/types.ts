@@ -19,6 +19,12 @@ export type Tool = {
   name: string;
   description: string;
   inputSchema: ToolSchema;
+  /**
+   * A terminal tool is a side effect with nothing to follow up on (for example suggest_next). If every tool
+   * call in a step is terminal and succeeded, and the step already contained the model's answer text, the
+   * turn ends without another model call. That saves a full prompt resend just to hear "I did it".
+   */
+  terminal?: boolean;
   run(input: Record<string, unknown>): Promise<string> | string;
 };
 

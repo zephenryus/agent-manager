@@ -12,9 +12,12 @@ export function createSuggestTool(
 ): Tool {
   return {
     name: "suggest_next",
+    terminal: true,
     description:
       "OPTIONAL extra, used only AFTER you have fully answered the request in your reply. Suggests that the user " +
-      "hear from another teammate next. It never replaces your answer and does not run that teammate; the user decides.",
+      "hear from another teammate next. It never replaces your answer and does not run that teammate; the user " +
+      "decides. Write your complete answer in the same message as this call: nothing further is needed after it, " +
+      "and the app shows the suggestion for you.",
     inputSchema: {
       type: "object",
       properties: {
