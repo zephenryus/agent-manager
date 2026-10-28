@@ -7,7 +7,8 @@
     "test": "node --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "spike:fake": "node src/spike/fake.ts",
-    "spike:bedrock": "node src/spike/bedrock.ts"
+    "spike:bedrock": "node src/spike/bedrock.ts",
+    "spike:room": "node src/spike/room.ts"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^3.0.0",
