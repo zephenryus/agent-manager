@@ -1,6 +1,8 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { addItem, assertLineSafe, editItem, isItemStatus, listItems, setItemStatus } from "./board.ts";
 import type { ItemStatus } from "./board.ts";
+import { NEW_BOARD_RE, blankBoard } from "./boardFiles.ts";
 import { levelOfBoardOrThrow, loadBoards } from "./hierarchy.ts";
 import { DEFAULT_LEVEL_CONFIG, nextId, parentProblem } from "./permissions.ts";
 import type { LevelConfig } from "./permissions.ts";
@@ -68,11 +70,18 @@ export async function applyChange(input: ApplyInput): Promise<{ id: string; summ
   const level = levelOfBoardOrThrow(board);
   const path = vault.boardPath(board);
   let text: string;
+  let isNew = false;
   try {
     text = await readFile(path, "utf8");
   } catch (err) {
-    if ((err as { code?: string }).code === "ENOENT") throw new Error(`No board named "${board}"`);
-    throw err;
+    if ((err as { code?: string }).code !== "ENOENT") throw err;
+    // The first item added to a task board that does not exist yet creates the board.
+    if (change.kind !== "add" || level !== "task") throw new Error(`No board named "${board}"`);
+    if (!NEW_BOARD_RE.test(board.replaceAll("\\", "/"))) {
+      throw new Error(`New task boards are named tasks/<lowercase-name>.md (letters, digits and dashes), not "${board}"`);
+    }
+    text = blankBoard(board);
+    isNew = true;
   }
 
   const checkParent = async (parent: string | undefined) => {
@@ -90,8 +99,9 @@ export async function applyChange(input: ApplyInput): Promise<{ id: string; summ
     const fields: Record<string, string> = {};
     for (const k of FIELD_KEYS) if (change.fields[k] !== undefined) fields[k] = change.fields[k]!;
     fields.creator = actor;
+    if (isNew) await mkdir(dirname(path), { recursive: true });
     await writeFile(path, addItem(text, { id, status: change.status, title: change.title, fields }), "utf8");
-    return { id, summary: `Added ${id} to ${board}` };
+    return { id, summary: `Added ${id} to ${board}${isNew ? " (new board)" : ""}` };
   }
 
   const existing = listItems(text).find((i) => i.id === change.id);

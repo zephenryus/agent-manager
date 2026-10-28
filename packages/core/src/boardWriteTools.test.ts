@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { cp, mkdtemp, readFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -98,7 +98,8 @@ test("request ids count up, and a bad board or item is a readable error", async 
   await assert.rejects(() => run("board_list", { board: "agents/x.md" }), /not a PI, sprint or task board/);
   await assert.rejects(() => run("board_list", { board: "../agents/x.md" }), /outside the boards folder/);
   await assert.rejects(() => run("board_set_status", { board: "pi.md", id: "PI-9", status: "done" }), /No item PI-9/);
-  await assert.rejects(() => run("board_add", { board: "tasks/nope.md", title: "x", parent: "SP-1" }), /No board named/);
+  await assert.rejects(() => run("board_set_status", { board: "tasks/nope.md", id: "T-1", status: "done" }), /No board named/);
+  await assert.rejects(() => run("board_add", { board: "tasks/Not Ok.md", title: "x", parent: "SP-1" }), /New task boards are named/);
   await assert.rejects(() => run("board_edit", { board: "pi.md", id: "PI-1" }), /Nothing to change/);
   await assert.rejects(() => run("board_add", { board: "pi.md", title: "a | b" }), /cannot contain/);
 });
@@ -107,4 +108,22 @@ test("board_list reads any board by name", async () => {
   const { run } = await setup("synthesizer", "pi.md");
   assert.equal(JSON.parse(await run("board_list", {})).length, 3);
   assert.equal(JSON.parse(await run("board_list", { board: TASKS })).length, 3);
+});
+
+test("the first item added to a missing task board creates it, and the hierarchy stays clean", async () => {
+  const { vault, run } = await setup("synthesizer");
+  const out = await run("board_add", { board: "tasks/export-flow.md", title: "Map the export steps", parent: "SP-1" });
+  assert.match(out, /Added T-4 to tasks\/export-flow\.md \(new board\)/);
+  const text = await readFile(vault.boardPath("tasks/export-flow.md"), "utf8");
+  assert.match(text, /^# Export flow\n\n## Tasks\n- T-4 \[proposed\] Map the export steps \| creator: synthesizer \| parent: SP-1/);
+  assert.deepEqual(checkHierarchy(await loadBoards(vault)), []);
+  assert.match(await run("board_add", { board: "tasks/export-flow.md", title: "Second", parent: "SP-1" }), /Added T-5 to tasks\/export-flow\.md\.$/);
+});
+
+test("a bad parent does not leave an empty board behind, and only adds create boards", async () => {
+  const { vault, run } = await setup("synthesizer");
+  await assert.rejects(() => run("board_add", { board: "tasks/ghost.md", title: "x", parent: "SP-9" }), /does not exist/);
+  await assert.rejects(() => readFile(vault.boardPath("tasks/ghost.md"), "utf8"), /ENOENT/);
+  await rm(vault.boardPath("tasks/interview-synthesis.md"));
+  await assert.rejects(() => run("board_set_status", { board: "tasks/interview-synthesis.md", id: "T-1", status: "done" }), /No board named/);
 });

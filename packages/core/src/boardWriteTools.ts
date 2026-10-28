@@ -125,7 +125,8 @@ export function createBoardWriteTools(deps: BoardToolDeps): Tool[] {
       name: "board_add",
       description:
         "Add an item to a board. Task boards: added at once. Sprint and PI boards: becomes a request that someone " +
-        "must approve. Sprint items need a PI parent; task items need a sprint parent (SP-n).",
+        "must approve. Sprint items need a PI parent; task items need a sprint parent (SP-n). A task board that does " +
+        "not exist yet is created by its first item: name it tasks/<lowercase-name>.md.",
       inputSchema: {
         type: "object",
         properties: {

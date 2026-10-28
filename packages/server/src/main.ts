@@ -14,6 +14,7 @@ import {
   createOllamaProvider,
   createLlmRouter,
   createVaultGit,
+  ensureBoardFiles,
   loadAgents,
   openVault,
   withBudget,
@@ -49,6 +50,8 @@ async function seedVault(root: string): Promise<void> {
   for (const dir of ["agents", "boards"]) {
     if (!(await exists(join(root, dir)))) await cp(join(sampleVault, dir), join(root, dir), { recursive: true });
   }
+  // A vault that already has some boards may lack others: add empty ones, never overwrite.
+  await ensureBoardFiles(openVault(root));
 }
 
 /** Demo only: two fake pending requests, so the inbox has something to approve or reject. */

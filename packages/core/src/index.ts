@@ -8,6 +8,7 @@ export * from "./providers/demo.ts";
 export * from "./vaultGit.ts";
 export * from "./boardTools.ts";
 export * from "./boardWriteTools.ts";
+export * from "./boardFiles.ts";
 export * from "./changes.ts";
 export * from "./context.ts";
 export * from "./fileTools.ts";
