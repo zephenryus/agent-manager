@@ -61,3 +61,13 @@ export class ProviderAuthError extends Error {
     this.hint = hint;
   }
 }
+
+/** Thrown when a model backend cannot be reached or cannot serve the request (Ollama not running, model not pulled). */
+export class ProviderUnavailableError extends Error {
+  readonly hint: string;
+  constructor(message: string, hint: string) {
+    super(message);
+    this.name = "ProviderUnavailableError";
+    this.hint = hint;
+  }
+}

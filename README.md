@@ -20,6 +20,14 @@ transcripts live; it is created on first run (seeded from `sample-vault`) and sh
 It is its own git repo, and every message you send is saved as a commit there. `dailyTokenLimit` is the day's token
 budget (input + output); the pen at the bottom of the board shows what is left, warns at 80% and stops at 100%.
 
+Local model (Ollama, no cloud, no cost): install Ollama, run `ollama pull gemma4:e4b`, copy
+`config.ollama.example.json` to a config of your own, point `vaultPath` at a throwaway vault, and start with
+`node packages/server/src/main.ts --config <your config>`. The router and the specialists can use different models.
+`numCtx` is the context window: keep it large enough for the charter, transcript and boards (16384 is a good start),
+because Ollama silently cuts off the start of a prompt that is too long. `think: false` skips the model's reasoning
+step, which is faster; leave it out to let the model decide. Small local models call tools less reliably than
+Sonnet, so expect the router to fall back to the Floor manager more often.
+
 Lower-level checks, no UI:
 
 ```

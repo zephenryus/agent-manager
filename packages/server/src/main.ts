@@ -11,6 +11,7 @@ import {
   createApproval,
   createBudget,
   createDemoProvider,
+  createOllamaProvider,
   createLlmRouter,
   createVaultGit,
   loadAgents,
@@ -81,6 +82,7 @@ async function main() {
   let dailyLimit = 1_000_000;
   let prices: { inputPerMTok: number; outputPerMTok: number } | undefined;
   let providers: Record<ModelTier, Provider>;
+  let modelNote = "pretend model";
 
   if (demo) {
     vaultRoot = await mkdtemp(join(tmpdir(), "am-demo-vault-"));
@@ -97,11 +99,26 @@ async function main() {
     dailyLimit = config.dailyTokenLimit;
     prices = config.prices;
     await seedVault(vaultRoot);
-    // Loaded only here so demo mode and the tests never need the AI SDK installed.
-    const { createBedrockProvider } = await import("@am/core/bedrock");
-    const make = (modelId: string) =>
-      createBedrockProvider({ profile: config.aws.profile, region: config.aws.region, modelId });
-    providers = { router: make(config.models.router), specialist: make(config.models.specialist) };
+    if (config.provider === "ollama") {
+      const o = config.ollama;
+      const make = (model: string) =>
+        createOllamaProvider({
+          model,
+          baseUrl: o.baseUrl,
+          numCtx: o.numCtx,
+          ...(o.think !== undefined ? { think: o.think } : {}),
+          ...(o.keepAlive !== undefined ? { keepAlive: o.keepAlive } : {}),
+        });
+      providers = { router: make(o.models.router), specialist: make(o.models.specialist) };
+      modelNote = `Ollama at ${o.baseUrl} (router ${o.models.router}, specialist ${o.models.specialist})`;
+    } else {
+      // Loaded only here so demo mode and the tests never need the AI SDK installed.
+      const { createBedrockProvider } = await import("@am/core/bedrock");
+      const make = (modelId: string) =>
+        createBedrockProvider({ profile: config.aws.profile, region: config.aws.region, modelId });
+      providers = { router: make(config.models.router), specialist: make(config.models.specialist) };
+      modelNote = `Bedrock ${config.aws.region} (router ${config.models.router}, specialist ${config.models.specialist})`;
+    }
   }
   if (values.port !== undefined) {
     port = Number(values.port);
@@ -163,7 +180,8 @@ async function main() {
   server.listen(port, "127.0.0.1", () => {
     console.log(`\nAgent manager${demo ? " (demo: pretend model, temporary vault)" : ""}`);
     console.log(`  Open http://localhost:${port}`);
-    console.log(`  Vault: ${vault.root}\n`);
+    console.log(`  Vault: ${vault.root}`);
+    console.log(`  Models: ${modelNote}\n`);
   });
 
   const stop = () => {

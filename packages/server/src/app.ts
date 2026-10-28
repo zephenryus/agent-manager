@@ -5,6 +5,7 @@ import {
   ApprovalError,
   BudgetError,
   ProviderAuthError,
+  ProviderUnavailableError,
   checkHierarchy,
   createRoom,
   listApprovals,
@@ -396,6 +397,9 @@ export function createApp(opts: AppOptions): App {
         } else if (err instanceof ProviderAuthError) {
           status = 401;
           body = { error: err.message, hint: err.hint, kind: "auth" };
+        } else if (err instanceof ProviderUnavailableError) {
+          status = 503;
+          body = { error: err.message, hint: err.hint, kind: "unavailable" };
         } else if (err instanceof BudgetError) {
           status = 429;
           body = { error: err.message, kind: "budget", budget: err.snapshot satisfies BudgetSnapshot };

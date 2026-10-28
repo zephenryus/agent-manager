@@ -11,6 +11,7 @@ import { test } from "node:test";
 import {
   KNOWN_TOOLS,
   ProviderAuthError,
+  ProviderUnavailableError,
   createBudget,
   createDemoProvider,
   createLlmRouter,
@@ -510,6 +511,28 @@ test("state describes each board, and a board comes with its hierarchy problems"
     await writeFile(join(h.vaultRoot, "boards", "sprint.md"), "- SP-1 [active] Lost | parent: PI-9\n");
     const bad = (await (await fetch(`${h.base}/api/board?name=sprint.md`)).json()) as any;
     assert.deepEqual(bad.issues.map((i: any) => [i.itemId, i.kind]), [["SP-1", "unknown_parent"]]);
+  } finally {
+    await h.close();
+  }
+});
+
+test("a model that cannot be reached comes back as 503 with the fix, and the server recovers", async () => {
+  const failing: Provider = {
+    id: "failing",
+    async complete() {
+      throw new ProviderUnavailableError("Can't reach Ollama at http://127.0.0.1:11434.", "Start Ollama, then try again.");
+    },
+  };
+  const h = await start({ provider: failing });
+  try {
+    const res = await post(h, { text: "hello @floor-manager" });
+    assert.equal(res.status, 503);
+    const body = (await res.json()) as Record<string, string>;
+    assert.equal(body.kind, "unavailable");
+    assert.match(body.error!, /Can't reach Ollama/);
+    assert.match(body.hint!, /Start Ollama/);
+    const s = (await (await fetch(`${h.base}/api/state`)).json()) as { busy: boolean };
+    assert.equal(s.busy, false);
   } finally {
     await h.close();
   }

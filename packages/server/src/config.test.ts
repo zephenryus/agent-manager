@@ -10,9 +10,15 @@ const minimal = {
   models: { router: "r-model", specialist: "s-model" },
 };
 
+const bedrock = (c: ReturnType<typeof parseConfig>) => {
+  if (c.provider !== "bedrock") throw new Error("expected bedrock");
+  return c;
+};
+
 test("defaults fill in everything optional", () => {
   const c = parseConfig(minimal, "/home/kevin");
-  assert.equal(c.aws.region, "us-east-1");
+  assert.equal(c.provider, "bedrock");
+  assert.equal(bedrock(c).aws.region, "us-east-1");
   assert.equal(c.port, DEFAULT_PORT);
   assert.equal(c.dailyTokenLimit, 200_000);
   assert.equal(c.userName, "You");
@@ -59,5 +65,34 @@ test("loadConfig: missing file explains what to do; bad JSON says so", async () 
   await writeFile(join(dir, "bad.json"), "{ nope");
   await assert.rejects(() => loadConfig(join(dir, "bad.json")), /not valid JSON/);
   await writeFile(join(dir, "ok.json"), JSON.stringify(minimal));
-  assert.equal((await loadConfig(join(dir, "ok.json"))).aws.profile, "work");
+  assert.equal(bedrock(await loadConfig(join(dir, "ok.json"))).aws.profile, "work");
+});
+
+test("provider ollama needs no AWS settings and fills in its defaults", () => {
+  const c = parseConfig({ provider: "ollama", ollama: { models: { router: "gemma4:e4b", specialist: "gemma4:e4b" } } }, "/h");
+  if (c.provider !== "ollama") throw new Error("expected ollama");
+  assert.deepEqual(c.ollama, {
+    baseUrl: "http://127.0.0.1:11434",
+    models: { router: "gemma4:e4b", specialist: "gemma4:e4b" },
+    numCtx: 16384,
+  });
+});
+
+test("ollama options are read, and mistakes name the field", () => {
+  const ok = parseConfig({
+    provider: "ollama",
+    ollama: { baseUrl: "http://pi.local:11434", numCtx: 32768, think: false, keepAlive: "30m", models: { router: "a", specialist: "b" } },
+  });
+  if (ok.provider !== "ollama") throw new Error("expected ollama");
+  assert.deepEqual(ok.ollama, { baseUrl: "http://pi.local:11434", numCtx: 32768, think: false, keepAlive: "30m", models: { router: "a", specialist: "b" } });
+  const models = { router: "a", specialist: "b" };
+  const bad = (ollama: object, re: RegExp) =>
+    assert.throws(() => parseConfig({ provider: "ollama", ollama }), (e) => e instanceof ConfigError && re.test(e.message));
+  bad({ models: { router: "a" } }, /ollama\.models\.specialist/);
+  bad({ models, baseUrl: "localhost" }, /ollama\.baseUrl/);
+  bad({ models, baseUrl: "ftp://x" }, /ollama\.baseUrl/);
+  bad({ models, numCtx: 100 }, /ollama\.numCtx.*at least 2048/);
+  bad({ models, think: "no" }, /ollama\.think/);
+  assert.throws(() => parseConfig({ provider: "ollama" }), /ollama\.models\.router/);
+  assert.throws(() => parseConfig({ ...minimal, provider: "openai" }), /"provider" must be/);
 });

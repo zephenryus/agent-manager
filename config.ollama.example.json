@@ -1,0 +1,18 @@
+{
+  "provider": "ollama",
+  "ollama": {
+    "baseUrl": "http://127.0.0.1:11434",
+    "models": {
+      "router": "gemma4:e4b",
+      "specialist": "gemma4:e4b"
+    },
+    "numCtx": 16384,
+    "think": false,
+    "keepAlive": "30m"
+  },
+  "vaultPath": "~/agent-manager-test-vault",
+  "userName": "Kevin",
+  "dailyTokenLimit": 200000,
+  "port": 4318,
+  "defaultBoard": "pi.md"
+}

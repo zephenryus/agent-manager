@@ -17,6 +17,7 @@ export * from "./notes.ts";
 export * from "./notesTools.ts";
 export * from "./permissions.ts";
 export * from "./providers/fake.ts";
+export * from "./providers/ollama.ts";
 export * from "./room.ts";
 export * from "./roomTools.ts";
 export * from "./router.ts";

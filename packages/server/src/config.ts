@@ -2,9 +2,15 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-export type AppConfig = {
-  aws: { profile: string; region: string };
+export type OllamaConfig = {
+  baseUrl: string;
   models: { router: string; specialist: string };
+  numCtx: number;
+  think?: boolean;
+  keepAlive?: string;
+};
+
+type CommonConfig = {
   /** Where your real boards, notes and transcripts live. Outside the repo. */
   vaultPath: string;
   userName: string;
@@ -13,6 +19,13 @@ export type AppConfig = {
   defaultBoard: string;
   prices?: { inputPerMTok: number; outputPerMTok: number };
 };
+
+/** Which backend serves the models. "bedrock" (the default) or "ollama" for a local model. */
+export type AppConfig = CommonConfig &
+  (
+    | { provider: "bedrock"; aws: { profile: string; region: string }; models: { router: string; specialist: string } }
+    | { provider: "ollama"; ollama: OllamaConfig }
+  );
 
 export const DEFAULT_PORT = 4317;
 
@@ -48,17 +61,35 @@ export function expandHome(p: string, home: string = homedir()): string {
   return p;
 }
 
+function parseOllama(raw: unknown): OllamaConfig {
+  const o = obj(raw);
+  const models = obj(o.models);
+  const baseUrl = str(o.baseUrl, "ollama.baseUrl", "http://127.0.0.1:11434");
+  try {
+    const u = new URL(baseUrl);
+    if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("not http");
+  } catch {
+    throw new ConfigError(`config: "ollama.baseUrl" must be a web address like http://127.0.0.1:11434`);
+  }
+  if (o.think !== undefined && typeof o.think !== "boolean") throw new ConfigError(`config: "ollama.think" must be true or false`);
+  const result: OllamaConfig = {
+    baseUrl,
+    models: { router: str(models.router, "ollama.models.router"), specialist: str(models.specialist, "ollama.models.specialist") },
+    numCtx: num(o.numCtx, "ollama.numCtx", 16_384, { int: true, min: 2048 }),
+  };
+  if (typeof o.think === "boolean") result.think = o.think;
+  if (o.keepAlive !== undefined) result.keepAlive = str(o.keepAlive, "ollama.keepAlive");
+  return result;
+}
+
 export function parseConfig(raw: unknown, home: string = homedir()): AppConfig {
   const c = obj(raw);
-  const aws = obj(c.aws);
-  const models = obj(c.models);
   const prices = c.prices === undefined ? undefined : obj(c.prices);
-  const config: AppConfig = {
-    aws: { profile: str(aws.profile, "aws.profile"), region: str(aws.region, "aws.region", "us-east-1") },
-    models: {
-      router: str(models.router, "models.router"),
-      specialist: str(models.specialist, "models.specialist"),
-    },
+  const provider = c.provider === undefined ? "bedrock" : c.provider;
+  if (provider !== "bedrock" && provider !== "ollama") {
+    throw new ConfigError(`config: "provider" must be "bedrock" or "ollama"`);
+  }
+  const common: CommonConfig = {
     vaultPath: resolve(expandHome(str(c.vaultPath, "vaultPath", "~/agent-manager-vault"), home)),
     userName: str(c.userName, "userName", "You"),
     dailyTokenLimit: num(c.dailyTokenLimit, "dailyTokenLimit", 200_000, { int: true, min: 1 }),
@@ -66,12 +97,20 @@ export function parseConfig(raw: unknown, home: string = homedir()): AppConfig {
     defaultBoard: str(c.defaultBoard, "defaultBoard", "pi.md"),
   };
   if (prices) {
-    config.prices = {
+    common.prices = {
       inputPerMTok: num(prices.inputPerMTok, "prices.inputPerMTok", 0, { min: 0 }),
       outputPerMTok: num(prices.outputPerMTok, "prices.outputPerMTok", 0, { min: 0 }),
     };
   }
-  return config;
+  if (provider === "ollama") return { ...common, provider, ollama: parseOllama(c.ollama) };
+  const aws = obj(c.aws);
+  const models = obj(c.models);
+  return {
+    ...common,
+    provider,
+    aws: { profile: str(aws.profile, "aws.profile"), region: str(aws.region, "aws.region", "us-east-1") },
+    models: { router: str(models.router, "models.router"), specialist: str(models.specialist, "models.specialist") },
+  };
 }
 
 export async function loadConfig(path: string): Promise<AppConfig> {
