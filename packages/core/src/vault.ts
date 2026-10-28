@@ -10,6 +10,8 @@ export function assertValidId(id: string): void {
 export type Vault = {
   root: string;
   agentsDir: string;
+  /** One JSON file per approval request. */
+  approvalsDir: string;
   roomFile: string;
   dmFile(agentId: string): string;
   notes(agentId: string): { dir: string; pinned: string; log: string };
@@ -24,6 +26,7 @@ export function openVault(root: string): Vault {
   return {
     root: base,
     agentsDir: join(base, "agents"),
+    approvalsDir: join(base, "approvals"),
     roomFile: join(base, "rooms", "main.jsonl"),
     dmFile(agentId) {
       assertValidId(agentId);

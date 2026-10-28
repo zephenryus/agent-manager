@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
-import { createBoardTools } from "./boardTools.ts";
+import { createBoardWriteTools } from "./boardWriteTools.ts";
 import { buildContext } from "./context.ts";
 import type { FocusBoard } from "./context.ts";
+import { listBoardNames } from "./hierarchy.ts";
 import { createNotes } from "./notes.ts";
 import { createNotesTools } from "./notesTools.ts";
 import { createSuggestTool } from "./roomTools.ts";
@@ -15,9 +16,12 @@ import type { Provider, Tool, Usage } from "./types.ts";
 import type { AgentDef, ModelTier } from "./agents.ts";
 import type { Vault } from "./vault.ts";
 
-/** Tool names an agent file may list in `tools:`. Board writes arrive in P2 (permissions). */
+/** Tool names an agent file may list in `tools:`. */
 export const KNOWN_TOOLS = [
   "board_list",
+  "board_add",
+  "board_edit",
+  "board_set_status",
   "notes_head",
   "notes_tail",
   "notes_append",
@@ -137,11 +141,12 @@ export function createRoom(opts: RoomOptions): Room {
         emit({ type: "agent_state", agentId: id, state: "thinking" });
         try {
           const notes = createNotes(opts.vault, id, () => clock.now());
-          const [transcript, pinned, logTail, focus] = await Promise.all([
+          const [transcript, pinned, logTail, focus, boards] = await Promise.all([
             readTail(file, windowSize),
             notes.head(opts.pinnedLines ?? 40),
             notes.tail(opts.logLines ?? 10),
             loadFocus(focusName, focusPath),
+            listBoardNames(opts.vault),
           ]);
           const ctx = buildContext({
             agent,
@@ -150,6 +155,7 @@ export function createRoom(opts: RoomOptions): Room {
             pinned,
             logTail,
             ...(focus ? { focus } : {}),
+            boards,
             mode: sendOpts.dm !== undefined ? "dm" : "room",
             ...(opts.userName ? { userName: opts.userName } : {}),
           });
@@ -159,7 +165,10 @@ export function createRoom(opts: RoomOptions): Room {
             notes,
             validIds: active.map((a) => a.id),
             sink,
-            boardPath: focus ? focusPath : undefined,
+            vault: opts.vault,
+            agents: active,
+            clock,
+            ...(focus && focusName !== undefined ? { focusName } : {}),
           });
 
           const result = await runTurn({
@@ -220,7 +229,10 @@ type ToolDeps = {
   notes: ReturnType<typeof createNotes>;
   validIds: string[];
   sink: Suggestion[];
-  boardPath: string | undefined;
+  vault: Vault;
+  agents: AgentDef[];
+  clock: Clock;
+  focusName?: string;
 };
 
 /** Give an agent exactly the tools its file lists (and that exist). */
@@ -228,7 +240,13 @@ function buildTools(agent: AgentDef, deps: ToolDeps): Tool[] {
   const all: Tool[] = [
     ...createNotesTools(deps.notes),
     createSuggestTool(agent.id, deps.validIds, deps.sink),
-    ...(deps.boardPath ? createBoardTools(deps.boardPath).filter((t) => t.name === "board_list") : []),
+    ...createBoardWriteTools({
+      vault: deps.vault,
+      agents: deps.agents,
+      actor: agent.id,
+      clock: deps.clock,
+      ...(deps.focusName !== undefined ? { defaultBoard: deps.focusName } : {}),
+    }),
   ];
   return all.filter((t) => agent.tools.includes(t.name));
 }

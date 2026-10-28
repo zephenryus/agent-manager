@@ -15,6 +15,8 @@ export type ContextInput = {
   /** Tail of the log. */
   logTail: string[];
   focus?: FocusBoard;
+  /** Board file names (inside the boards folder) the agent can name in board tools. */
+  boards?: string[];
   mode: "room" | "dm";
   userName?: string;
 };
@@ -64,6 +66,14 @@ function buildSystem(input: ContextInput): string {
   }
   if (logTail.length > 0) {
     sections.push(`## Your recent log (newest last)\n${logTail.join("\n")}`);
+  }
+  if (input.boards && input.boards.length > 0 && agent.tools.some((t) => t.startsWith("board_"))) {
+    sections.push(
+      `## Boards\nBoards: ${input.boards.join(", ")}. Goals roll up: task items (T-n) belong to a sprint item (SP-n), ` +
+        `sprint items belong to a PI item (PI-n). Board tools take a \`board\` name and default to the board in focus. ` +
+        `You can change task items you created at once. Anything else becomes a request in the approvals inbox, ` +
+        `and the tool tells you who must approve; do not retry it, just tell the user it is waiting.`,
+    );
   }
   if (focus) {
     sections.push(`## Board in focus: ${focus.name}\n${focus.text.trim()}`);

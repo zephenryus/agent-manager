@@ -86,7 +86,7 @@ test("a routed message produces a reply, a transcript, notes and the right event
   const req = specialist.requests[0]!;
   assert.match(req.system, /You lead customer discovery/);
   assert.deepEqual(req.messages.map((m) => m.role), ["user"]);
-  assert.deepEqual(req.tools.map((t) => t.name).sort(), ["notes_append", "notes_head", "notes_pin", "notes_tail", "suggest_next"]);
+  assert.deepEqual(req.tools.map((t) => t.name).sort(), ["board_add", "board_edit", "board_list", "board_set_status", "notes_append", "notes_head", "notes_pin", "notes_tail", "suggest_next"]);
 });
 
 test("an @mention skips the router entirely", async () => {
@@ -205,7 +205,7 @@ test("the focus board reaches the agent and enables board_list", async () => {
   assert.ok(req.tools.some((t) => t.name === "board_list"));
 });
 
-test("a missing focus board is not an error: no board section, no board tool", async () => {
+test("a missing focus board is not an error: no board section", async () => {
   const { room, specialist } = await setup({
     routerScript: [route(["floor-manager"])],
     specialistScript: [reply("No board yet.")],
@@ -213,7 +213,6 @@ test("a missing focus board is not an error: no board section, no board tool", a
   await room.send("What is active?", { focus: "pi.md" });
   const req = specialist.requests[0]!;
   assert.doesNotMatch(req.system, /Board in focus/);
-  assert.ok(!req.tools.some((t) => t.name === "board_list"));
 });
 
 test("a focus path that escapes the boards folder is rejected before anything is written", async () => {

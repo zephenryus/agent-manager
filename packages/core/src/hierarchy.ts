@@ -22,6 +22,13 @@ export function levelOfBoard(name: string): Level | null {
   return null;
 }
 
+/** Level of a board file, or a readable error when the file is not part of the hierarchy. */
+export function levelOfBoardOrThrow(name: string): Level {
+  const level = levelOfBoard(name);
+  if (level === null) throw new Error(`"${name}" is not a PI, sprint or task board (use pi.md, sprint.md or tasks/<name>.md)`);
+  return level;
+}
+
 /** Every board file name (relative to the boards folder, forward slashes), sorted: pi, sprint, then tasks. */
 export async function listBoardNames(vault: Vault): Promise<string[]> {
   let entries: string[];

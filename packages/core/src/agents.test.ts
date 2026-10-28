@@ -103,7 +103,7 @@ test("reporting lines must exist and must not loop", () => {
 
 test("missing qa_partner and unknown tools are warnings", () => {
   const issues = validateRoster(
-    [agent({ id: "a", isOrchestrator: true, qaPartner: "skeptic", tools: ["board_set_status", "notes_head"] })],
+    [agent({ id: "a", isOrchestrator: true, qaPartner: "skeptic", tools: ["board_delete", "notes_head"] })],
     [...KNOWN_TOOLS],
   );
   assert.equal(issues.length, 2);
