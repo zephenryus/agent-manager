@@ -1,10 +1,11 @@
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { extname, join, resolve, sep } from "node:path";
+import { extname, resolve, sep } from "node:path";
 import {
   BudgetError,
   ProviderAuthError,
   createRoom,
+  listBoardNames,
   readTail,
 } from "@am/core";
 import type {
@@ -130,15 +131,7 @@ export function createApp(opts: AppOptions): App {
       state: agentStates.get(a.id) ?? "idle",
     }));
 
-  async function listBoards(): Promise<string[]> {
-    try {
-      const names = await readdir(join(opts.vault.root, "boards"));
-      return names.filter((n) => n.endsWith(".md")).sort();
-    } catch (err) {
-      if ((err as { code?: string }).code === "ENOENT") return [];
-      throw err;
-    }
-  }
+  const listBoards = () => listBoardNames(opts.vault);
 
   function checkHost(req: IncomingMessage) {
     const host = (req.headers.host ?? "").toLowerCase();

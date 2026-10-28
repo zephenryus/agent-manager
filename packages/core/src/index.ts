@@ -9,6 +9,7 @@ export * from "./boardTools.ts";
 export * from "./context.ts";
 export * from "./files.ts";
 export * from "./frontmatter.ts";
+export * from "./hierarchy.ts";
 export * from "./notes.ts";
 export * from "./notesTools.ts";
 export * from "./permissions.ts";

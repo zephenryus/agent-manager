@@ -117,7 +117,7 @@ test("state lists the team, boards and today's budget", async () => {
   try {
     const s = (await (await fetch(`${h.base}/api/state`)).json()) as Record<string, any>;
     assert.equal(s.userName, "Kevin");
-    assert.deepEqual(s.boards, ["pi.md"]);
+    assert.deepEqual(s.boards, ["pi.md", "sprint.md", "tasks/interview-synthesis.md"]);
     assert.equal(s.busy, false);
     assert.equal(s.history, true);
     assert.equal(s.budget.state, "ok");
