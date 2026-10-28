@@ -8,6 +8,7 @@ import { parseArgs } from "node:util";
 import {
   GitUnavailableError,
   KNOWN_TOOLS,
+  createApproval,
   createBudget,
   createDemoProvider,
   createLlmRouter,
@@ -49,6 +50,28 @@ async function seedVault(root: string): Promise<void> {
   }
 }
 
+/** Demo only: two fake pending requests, so the inbox has something to approve or reject. */
+async function seedDemoApprovals(vault: ReturnType<typeof openVault>): Promise<void> {
+  await createApproval(vault, {
+    actor: "synthesizer",
+    board: "sprint.md",
+    level: "sprint",
+    why: "Five interviews is thin for a theme.",
+    change: { kind: "add", title: "Interview three more users", status: "proposed", fields: { parent: "PI-1", owner: "research-lead" } },
+    approvers: ["floor-manager"],
+    needed: "Sprint board changes go to the Floor manager",
+  });
+  await createApproval(vault, {
+    actor: "research-lead",
+    board: "pi.md",
+    level: "pi",
+    why: "The critique routine is ready to start.",
+    change: { kind: "set_status", id: "PI-2", status: "active" },
+    approvers: ["floor-manager", "user"],
+    needed: "PI board changes need the user's approval",
+  });
+}
+
 async function main() {
   const demo = values.demo === true;
   let port = DEFAULT_PORT;
@@ -62,6 +85,7 @@ async function main() {
   if (demo) {
     vaultRoot = await mkdtemp(join(tmpdir(), "am-demo-vault-"));
     await seedVault(vaultRoot);
+    await seedDemoApprovals(openVault(vaultRoot));
     const pretend = createDemoProvider();
     providers = { router: pretend, specialist: pretend };
   } else {
