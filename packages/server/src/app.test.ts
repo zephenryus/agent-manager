@@ -306,6 +306,29 @@ test("with no daily limit, messages keep working and the budget shows no limit",
   }
 });
 
+test("briefs: empty list, then list and read what an agent saved, and refuse odd names", async () => {
+  const h = await start();
+  try {
+    const get = (q = "") => fetch(`${h.base}/api/briefs${q}`);
+    assert.deepEqual(await (await get()).json(), { briefs: [] });
+
+    await mkdir(join(h.vaultRoot, "workspaces", "shared", "briefs"), { recursive: true });
+    await writeFile(join(h.vaultRoot, "workspaces", "shared", "briefs", "where-we-are.md"), "# Where we are\n\nOn track.");
+
+    const list = (await (await get()).json()) as { briefs: { name: string; title: string; modified: string }[] };
+    assert.deepEqual(list.briefs.map((b) => [b.name, b.title]), [["where-we-are.md", "Where we are"]]);
+
+    const one = (await (await get("?name=where-we-are.md")).json()) as { text: string; title: string };
+    assert.equal(one.title, "Where we are");
+    assert.match(one.text, /On track/);
+
+    assert.equal((await get("?name=nope.md")).status, 404);
+    assert.equal((await get("?name=..%2F..%2Fagents%2Ffloor-manager.md")).status, 404);
+  } finally {
+    await h.close();
+  }
+});
+
 test("hitting the daily limit comes back as 429 with the budget", async () => {
   const h = await start({ dailyLimit: 1 });
   try {

@@ -96,7 +96,7 @@ function buildSystem(input: ContextInput): string {
     sections.push(
       `## Your workspace\nYour own folder is ${WORKSPACES_DIR}/${agent.id}/: private working files such as drafts ` +
         `and scratch notes. The team's shared folder is ${WORKSPACES_DIR}/${SHARED_DIR}/: put finished work there ` +
-        `that others should use, with a name that says what it is (for example 2026-10-28-interview-themes.md). ` +
+        `that others should use, with a name that says what it is (for example interview-themes.md). You do not know today's date, so never put a date in a file name. ` +
         `You can read every workspace but write only to your own folder and shared/. files_write makes a new file ` +
         `and will not overwrite one unless you pass mode "replace"; mode "append" adds to the end. Use vault-relative ` +
         `paths and .md, .txt, .csv, .tsv or .json files. When you tell someone about saved work, give the file path.`,

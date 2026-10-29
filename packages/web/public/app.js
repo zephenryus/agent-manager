@@ -37,7 +37,7 @@ const els = {
   hint: $("composer-hint"), banner: $("banner"), bannerText: $("banner-text"), bannerHint: $("banner-hint"),
   bannerClose: $("banner-close"), boardSelect: $("board-select"), board: $("board"), marker: $("marker"),
   ink: $("ink"), tray: $("tray-text"), wall: $("whiteboard"), issues: $("issues"), inbox: $("inbox"),
-  inboxBadge: $("inbox-badge"), inboxTab: $("inbox-tab"),
+  inboxBadge: $("inbox-badge"), inboxTab: $("inbox-tab"), briefs: $("briefs"),
 };
 
 const state = {
@@ -362,12 +362,55 @@ function setWall(view) {
   state.wallView = view;
   els.wall.dataset.wall = view;
   els.inbox.hidden = view !== "inbox";
+  els.briefs.hidden = view !== "briefs";
   for (const b of document.querySelectorAll("[data-wall]")) {
     if (b.classList.contains("wb-tab")) b.setAttribute("aria-pressed", String(b.dataset.wall === view));
   }
   if (view === "inbox") loadInbox();
+  if (view === "briefs") loadBriefs();
 }
 for (const btn of document.querySelectorAll(".wb-tab")) btn.addEventListener("click", () => setWall(btn.dataset.wall));
+
+/* ---------- Briefs: short summaries the Floor manager saves in workspaces/shared/briefs/ ---------- */
+const fmtDay = (iso) => new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" }) + ", " + fmtTime(iso);
+
+async function loadBriefs() {
+  try {
+    const { briefs } = await api("/api/briefs");
+    const nodes = [el("h2", { text: "Briefs" })];
+    if (briefs.length === 0) {
+      nodes.push(el("p", { class: "wb-empty", text: "No briefs yet. Ask the Floor manager for one, like \"brief me on where we are\"." }));
+    }
+    for (const b of briefs) {
+      nodes.push(
+        el("button", { type: "button", class: "brief-row", onclick: () => openBrief(b.name) },
+          el("span", { class: "brief-title", text: b.title }),
+          el("span", { class: "brief-when", text: fmtDay(b.modified) }),
+        ),
+      );
+    }
+    els.briefs.replaceChildren(...nodes);
+  } catch (err) {
+    els.briefs.replaceChildren(el("p", { class: "wb-empty", text: err.message }));
+  }
+}
+
+async function openBrief(name) {
+  try {
+    const b = await api(`/api/briefs?name=${encodeURIComponent(name)}`);
+    els.briefs.replaceChildren(
+      el("button", { type: "button", class: "goto", text: "← All briefs", onclick: loadBriefs }),
+      el("p", { class: "brief-when", text: `${b.name}, saved ${fmtDay(b.modified)}` }),
+      el("div", { class: "brief-body", html: renderMarkdown(b.text, { headingBase: 2 }) }),
+    );
+    els.briefs.scrollTop = 0;
+  } catch (err) {
+    els.briefs.replaceChildren(
+      el("button", { type: "button", class: "goto", text: "← All briefs", onclick: loadBriefs }),
+      el("p", { class: "wb-empty", text: err.message }),
+    );
+  }
+}
 
 function setPending(n) {
   els.inboxBadge.hidden = n === 0;
@@ -589,6 +632,7 @@ function connect() {
       renderRoster();
       renderMessages(false);
       loadBoard();
+      if (state.wallView === "briefs" && !els.briefs.querySelector(".brief-body")) loadBriefs();
     }
   });
   let reconnected = false;

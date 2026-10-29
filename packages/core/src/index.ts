@@ -3,6 +3,7 @@
 export * from "./agents.ts";
 export * from "./approvals.ts";
 export * from "./board.ts";
+export * from "./briefs.ts";
 export * from "./budget.ts";
 export * from "./providers/demo.ts";
 export * from "./vaultGit.ts";

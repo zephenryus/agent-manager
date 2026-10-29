@@ -282,7 +282,8 @@ select {
 .wb-tab[aria-pressed="true"] { border-color: var(--board-ink); }
 .badge { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: var(--orange); color: #1b2830; font-size: 12px; font-weight: 700; text-align: center; line-height: 18px; }
 .wb-pick { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; }
-.whiteboard[data-wall="inbox"] .wb-pick, .whiteboard[data-wall="inbox"] #board, .whiteboard[data-wall="inbox"] #issues { display: none; }
+.whiteboard[data-wall="inbox"] .wb-pick, .whiteboard[data-wall="inbox"] #board, .whiteboard[data-wall="inbox"] #issues,
+.whiteboard[data-wall="briefs"] .wb-pick, .whiteboard[data-wall="briefs"] #board, .whiteboard[data-wall="briefs"] #issues { display: none; }
 .issues { margin: 10px 20px 0; padding: 8px 12px; border-left: 4px solid var(--orange); background: color-mix(in srgb, var(--orange) 12%, transparent); font-size: 13.5px; }
 .issues p { margin: 0 0 4px; font-weight: 600; color: var(--board-ink); }
 .issues ul { margin: 0; padding-left: 1.1em; list-style: disc; color: var(--board-soft); }
@@ -303,6 +304,11 @@ select {
 @media (prefers-color-scheme: dark) { .ap-actions button.approve { background: var(--green); border-color: var(--green); color: #0d1626; } }
 .ap-actions button:disabled { opacity: 0.55; cursor: default; }
 .ap-error { color: var(--red) !important; font-size: 13px; margin-top: 6px !important; }
+.brief-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; width: 100%; font: inherit; text-align: left; color: var(--board-ink); background: transparent; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--board-soft) 22%, transparent); padding: 10px 2px; min-height: 40px; cursor: pointer; }
+.brief-row:hover, .brief-row:focus-visible { background: color-mix(in srgb, var(--board-soft) 12%, transparent); }
+.brief-title { font-weight: 600; }
+.brief-when { color: var(--board-soft); font-size: 13px; white-space: nowrap; margin: 4px 0; }
+.brief-body { margin-top: 8px; }
 .decided summary { cursor: pointer; font-weight: 600; margin: 14px 0 6px; }
 .decided li { font-size: 13.5px; margin: 0.3em 0; }
 

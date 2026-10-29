@@ -369,11 +369,11 @@ test("an agent with files_write saves into shared and its own folder, and is ref
   assert.match(results, /write only inside workspaces\/synthesizer\//);
   await assert.rejects(() => readFile(join(root, "workspaces", "research-lead", "hijack.md"), "utf8"), /ENOENT/);
 
-  // The Floor manager's sample file does not list files_write, so it never gets the tool or the prompt section.
+  // An agent whose file does not list files_write never gets the tool or the prompt section.
   const floor = createFakeProvider([reply("Hi.")]);
   const room2 = createRoom({
     vault: openVault(root),
-    agents,
+    agents: agents.map((x) => (x.id === "floor-manager" ? { ...x, tools: x.tools.filter((t) => t !== "files_write") } : x)),
     providers: { router: routerProvider, specialist: floor },
     router: createLlmRouter({ provider: routerProvider, agents, orchestratorId: "floor-manager" }),
     userName: "Kevin",

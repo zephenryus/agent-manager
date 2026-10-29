@@ -7,6 +7,8 @@ import {
   ProviderAuthError,
   ProviderUnavailableError,
   checkHierarchy,
+  listBriefs,
+  readBrief,
   createRoom,
   listApprovals,
   listBoardNames,
@@ -311,6 +313,18 @@ export function createApp(opts: AppOptions): App {
         if ((err as { code?: string }).code === "ENOENT") throw new HttpError(404, `No board named "${name}"`);
         throw err;
       }
+      return;
+    }
+
+    if (url.pathname === "/api/briefs" && method === "GET") {
+      const name = url.searchParams.get("name");
+      if (name === null) {
+        json(res, 200, { briefs: await listBriefs(opts.vault.root) });
+        return;
+      }
+      const brief = await readBrief(opts.vault.root, name);
+      if (!brief) throw new HttpError(404, `No brief named "${name}"`);
+      json(res, 200, brief);
       return;
     }
 
