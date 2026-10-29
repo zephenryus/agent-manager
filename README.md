@@ -30,6 +30,11 @@ can read every workspace. `readableFolders` (config, default `["Interviews"]`) a
 Briefs: ask the Floor manager for a short brief and it saves one in `workspaces/shared/briefs/`. The Briefs tab on the
 right lists them (newest first) and opens one to read. They are plain markdown files, so you can edit or add your own.
 
+Work log: the team shares a plain-text log in `worklog/YYYY-MM-DD.md`, one line per piece of work. The app adds a line
+(marked `(auto)`) after any turn that saved a file or changed a board, and agents add their own with `worklog_add`.
+Agents with `worklog_read` get the latest lines in their prompt, so the Floor manager can say what has been done.
+Every agent call is also told the current date and time.
+
 Local model (Ollama, no cloud, no cost): install Ollama, run `ollama pull gemma4:e4b`, copy
 `config.ollama.example.json` to a config of your own, point `vaultPath` at a throwaway vault, and start with
 `node packages/server/src/main.ts --config <your config>`. The router and the specialists can use different models.

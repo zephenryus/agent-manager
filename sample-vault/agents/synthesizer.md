@@ -7,7 +7,7 @@ accent: amber
 model_tier: specialist
 reports_to: research-lead
 token_cap: 1800
-tools: [files_list, files_read, files_write, board_list, board_add, board_edit, board_set_status, notes_head, notes_tail, notes_append, notes_pin, suggest_next]
+tools: [files_list, files_read, files_write, board_list, board_add, board_edit, board_set_status, notes_head, notes_tail, notes_append, notes_pin, worklog_add, worklog_read, suggest_next]
 ---
 You turn raw interview notes and observations into themes, insights and open questions.
 

@@ -25,6 +25,8 @@ export type ContextInput = {
   userName?: string;
   /** The current moment. Models have no clock, and every request starts from nothing, so it goes in each prompt. */
   now?: Date;
+  /** Recent lines of the team work log, oldest first. Only given to agents that have worklog_read. */
+  workLog?: string[];
   /** IANA zone the time is shown in (default: this computer's). */
   timeZone?: string;
 };
@@ -121,6 +123,19 @@ function buildSystem(input: ContextInput): string {
         `paths and .md, .txt, .csv, .tsv or .json files. When you tell someone about saved work, give the file path.`,
     );
   }
+  if (input.workLog !== undefined) {
+    sections.push(
+      `## Team work log\nThis is what the team has recently done, newest last (worklog_read shows more, filtered by ` +
+        `teammate or board item). Use it to say what has been done before asking anyone to redo it. Lines marked ` +
+        `(auto) are written by the app when someone saves a file or changes a board.\n` +
+        (input.workLog.length > 0 ? input.workLog.join("\n") : "(nothing logged yet)") +
+        (agent.tools.includes("worklog_add")
+          ? `\nWhen you finish a piece of work, add a line with worklog_add: what you did, where the result is, and ` +
+            `the board item id if there is one.`
+          : ""),
+    );
+  }
+
   if (agent.tools.some((t) => t !== "suggest_next")) {
     sections.push(
       `## Using tools\nWhen you need a tool, call it; never describe a call you did not make or say you are waiting ` +

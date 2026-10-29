@@ -87,7 +87,7 @@ test("a routed message produces a reply, a transcript, notes and the right event
   const req = specialist.requests[0]!;
   assert.match(req.system, /You lead customer discovery/);
   assert.deepEqual(req.messages.map((m) => m.role), ["user"]);
-  assert.deepEqual(req.tools.map((t) => t.name).sort(), ["board_add", "board_edit", "board_list", "board_set_status", "files_list", "files_read", "files_write", "notes_append", "notes_head", "notes_pin", "notes_tail", "suggest_next"]);
+  assert.deepEqual(req.tools.map((t) => t.name).sort(), ["board_add", "board_edit", "board_list", "board_set_status", "files_list", "files_read", "files_write", "notes_append", "notes_head", "notes_pin", "notes_tail", "suggest_next", "worklog_add", "worklog_read"]);
 });
 
 test("an @mention skips the router entirely", async () => {
@@ -459,4 +459,20 @@ test("every agent call is told the current date and time", async () => {
   const { room, specialist } = await setup({ routerScript: [route(["research-lead"])], specialistScript: [reply("ok")] });
   await room.send("what day is it?");
   assert.match(specialist.requests[0]!.system, /## Right now\nIt is Tuesday, October 27, 2026 at 8:00 PM \(2026-10-27, UTC\)\./);
+});
+
+test("a turn that changes something is logged automatically, and agents with worklog_read see the log", async () => {
+  const { room, specialist, root } = await setup({
+    routerScript: [route(["synthesizer"])],
+    specialistScript: [
+      callTool("w1", "files_write", { path: "workspaces/shared/themes.md", content: "# Themes\n" }, "Saving."),
+      callTool("w2", "worklog_add", { text: "Wrote the themes file", item: "T-2" }, ""),
+      reply("Done."),
+    ],
+  });
+  await room.send("@synthesizer save the themes");
+  const log = await readFile(join(root, "worklog", "2026-10-27.md"), "utf8");
+  assert.match(log, /synthesizer \[T-2\] Wrote the themes file/);
+  assert.match(log, /synthesizer \(auto\) Created workspaces\/shared\/themes\.md/);
+  assert.match(specialist.requests[0]!.system, /## Team work log\n[\s\S]*\(nothing logged yet\)/);
 });

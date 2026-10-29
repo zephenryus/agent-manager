@@ -12,6 +12,8 @@ import { isQuietTool, summarizeError, summarizeToolCall } from "./toolActivity.t
 import type { ToolActivity } from "./toolActivity.ts";
 import { findMentions } from "./router.ts";
 import type { RouteDecision, Router } from "./router.ts";
+import { LOGGED_TOOLS, autoLogText, createWorklog, createWorklogTools } from "./worklog.ts";
+import type { Worklog } from "./worklog.ts";
 import { appendEntry, readTail, systemClock } from "./transcript.ts";
 import type { Clock, Suggestion, TranscriptEntry } from "./transcript.ts";
 import { runTurn } from "./turn.ts";
@@ -33,6 +35,8 @@ export const KNOWN_TOOLS = [
   "notes_tail",
   "notes_append",
   "notes_pin",
+  "worklog_add",
+  "worklog_read",
   "suggest_next",
 ] as const;
 
@@ -90,6 +94,7 @@ export type Room = { send(text: string, opts?: SendOptions): Promise<SendResult>
 
 export function createRoom(opts: RoomOptions): Room {
   const clock = opts.clock ?? systemClock;
+  const worklog = createWorklog(opts.vault, clock, opts.timeZone);
   const emit = (e: RoomEvent) => opts.onEvent?.(e);
   const windowSize = opts.transcriptWindow ?? 20;
   const active = opts.agents.filter((a) => a.status === "active");
@@ -156,12 +161,13 @@ export function createRoom(opts: RoomOptions): Room {
         emit({ type: "agent_state", agentId: id, state: "thinking" });
         try {
           const notes = createNotes(opts.vault, id, () => clock.now());
-          const [transcript, pinned, logTail, focus, boards] = await Promise.all([
+          const [transcript, pinned, logTail, focus, boards, workLog] = await Promise.all([
             readTail(file, windowSize),
             notes.head(opts.pinnedLines ?? 40),
             notes.tail(opts.logLines ?? 10),
             loadFocus(focusName, focusPath),
             listBoardNames(opts.vault),
+            agent.tools.includes("worklog_read") ? worklog.read({ limit: 10 }) : Promise.resolve(undefined),
           ]);
           const ctx = buildContext({
             agent,
@@ -174,6 +180,7 @@ export function createRoom(opts: RoomOptions): Room {
             readable,
             mode: sendOpts.dm !== undefined ? "dm" : "room",
             now: clock.now(),
+            ...(workLog ? { workLog } : {}),
             ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),
             ...(opts.userName ? { userName: opts.userName } : {}),
           });
@@ -186,11 +193,13 @@ export function createRoom(opts: RoomOptions): Room {
             vault: opts.vault,
             agents: active,
             clock,
+            worklog,
             fileTools,
             ...(focus && focusName !== undefined ? { focusName } : {}),
           });
 
           const activity: ToolActivity[] = [];
+          const changes: string[] = [];
           const calls = new Map<string, { name: string; summary: string }>();
           const result = await runTurn({
             provider: opts.providers[agent.modelTier],
@@ -205,6 +214,7 @@ export function createRoom(opts: RoomOptions): Room {
                 calls.set(event.id, { name: event.name, summary: summarizeToolCall(event.name, event.input) });
                 emit({ type: "agent_state", agentId: id, state: "working" });
               } else if (event.type === "tool_result" && !isQuietTool(event.name)) {
+                if (!event.isError && LOGGED_TOOLS.includes(event.name)) changes.push(autoLogText(event.output));
                 const call = calls.get(event.id);
                 activity.push({
                   name: event.name,
@@ -215,6 +225,11 @@ export function createRoom(opts: RoomOptions): Room {
               }
             },
           });
+
+          if (changes.length > 0) {
+            // The record of what actually happened, whether or not the agent also wrote its own line.
+            await worklog.add({ agent: id, text: changes.join(" "), auto: true }).catch(() => undefined);
+          }
 
           total.inputTokens += result.usage.inputTokens;
           total.outputTokens += result.usage.outputTokens;
@@ -268,6 +283,7 @@ type ToolDeps = {
   clock: Clock;
   fileTools: Tool[];
   focusName?: string;
+  worklog: Worklog;
 };
 
 /** Give an agent exactly the tools its file lists (and that exist). */
@@ -277,6 +293,7 @@ function buildTools(agent: AgentDef, deps: ToolDeps): Tool[] {
     createSuggestTool(agent.id, deps.validIds, deps.sink),
     ...deps.fileTools,
     ...createWorkspaceTools({ vault: deps.vault, actor: agent.id }),
+    ...createWorklogTools({ worklog: deps.worklog, actor: agent.id }),
     ...createBoardWriteTools({
       vault: deps.vault,
       agents: deps.agents,

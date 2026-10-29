@@ -209,3 +209,13 @@ test("the current time is in the prompt when given, in the chosen zone, and abse
   assert.doesNotMatch(buildContext(input([e("user", "hi")])).system, /Right now/);
   assert.match(formatNow(now), /^\w+, \w+ \d+, 2026 at /);
 });
+
+test("agents with worklog_read see the recent log; others do not", () => {
+  const withLog = agent("research-lead", "Research lead", { tools: ["worklog_read", "worklog_add"] });
+  const text = buildContext(
+    input([e("user", "hi")], { agent: withLog, workLog: ["- 2026-10-28 20:32 synthesizer [T-2] Wrote themes."] }),
+  ).system;
+  assert.match(text, /## Team work log[\s\S]*- 2026-10-28 20:32 synthesizer \[T-2\] Wrote themes\.[\s\S]*add a line with worklog_add/);
+  assert.match(buildContext(input([e("user", "hi")], { agent: withLog, workLog: [] })).system, /\(nothing logged yet\)/);
+  assert.doesNotMatch(buildContext(input([e("user", "hi")])).system, /Team work log/);
+});
