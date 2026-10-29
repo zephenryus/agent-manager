@@ -52,6 +52,11 @@ const REPLIES: Record<string, string> = {
     "Who would you like to hear from? The Research lead plans discovery; the Synthesizer turns notes into themes.",
 };
 
+const SUGGESTED_MESSAGES: Record<string, string> = {
+  synthesizer: "Can you pull three themes and the open questions from the interview notes in the Interviews folder?",
+  "research-lead": "Given these themes, what should we ask in the next round of interviews?",
+};
+
 export function createDemoProvider(opts: DemoOptions = {}): Provider {
   const delayMs = opts.delayMs ?? 900;
   return {
@@ -105,7 +110,13 @@ export function createDemoProvider(opts: DemoOptions = {}): Provider {
       return {
         text,
         toolCalls: wantsSuggestion
-          ? [{ id: "demo-suggest", name: "suggest_next", input: { agent_id: suggest, reason: "Worth a second opinion." } }]
+          ? [
+              {
+                id: "demo-suggest",
+                name: "suggest_next",
+                input: { agent_id: suggest, reason: "Worth a second opinion.", message: SUGGESTED_MESSAGES[suggest] ?? "" },
+              },
+            ]
           : [],
         usage: { inputTokens: input, outputTokens: tokens(text) },
       };

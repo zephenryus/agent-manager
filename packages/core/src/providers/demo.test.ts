@@ -63,3 +63,17 @@ test("for notes questions a specialist lists, then reads, before answering", asy
   assert.deepEqual((await demo.complete({ ...base, messages: empty })).toolCalls.map((c) => c.name), ["suggest_next"]);
   assert.deepEqual((await demo.complete({ ...base, messages: [{ role: "user", text: "hello" }] })).toolCalls.map((c) => c.name), ["suggest_next"]);
 });
+
+test("the demo's suggestions come with a ready-to-send message for the teammate", async () => {
+  const tools = [{ name: "suggest_next", description: "d", inputSchema: { type: "object" as const, properties: {} } }];
+  const from = async (id: string) => {
+    const res = await demo.complete({ system: `Your id is "${id}".`, messages: [{ role: "user", text: "hello" }], tools });
+    return res.toolCalls[0]!.input as { agent_id: string; message: string };
+  };
+  const fromResearch = await from("research-lead");
+  assert.equal(fromResearch.agent_id, "synthesizer");
+  assert.match(fromResearch.message, /themes/);
+  const fromSynth = await from("synthesizer");
+  assert.equal(fromSynth.agent_id, "research-lead");
+  assert.match(fromSynth.message, /next round of interviews/);
+});

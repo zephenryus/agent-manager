@@ -549,7 +549,7 @@ test("tool use is shown live (which tool, on what, ok or failed) and saved on th
   const provider = createFakeProvider([
     callTool("t1", "files_write", { path: "workspaces/shared/a.md", content: "TOP SECRET BODY" }),
     callTool("t2", "files_read", { path: "Interviews/missing.md" }),
-    callTool("t3", "suggest_next", { agent_id: "research-lead", reason: "More evidence" }, "Finished."),
+    callTool("t3", "suggest_next", { agent_id: "research-lead", reason: "More evidence", message: "What should we ask next?" }, "Finished."),
   ]);
   const h = await start({ provider });
   try {
@@ -605,6 +605,10 @@ test("tool use is shown live (which tool, on what, ok or failed) and saved on th
       { name: "files_read", summary: "Interviews/missing.md", ok: false, error: last.tools[1].error },
     ]);
     assert.match(last.tools[1].error, /You can only read inside/);
+    // The chip's ready-to-send message is saved with the reply, so a reloaded page can still draft it.
+    assert.deepEqual(last.suggestions, [{ agentId: "research-lead", reason: "More evidence", message: "What should we ask next?" }]);
+    const body = (await res.json()) as { suggestions: unknown[] };
+    assert.deepEqual(body.suggestions, last.suggestions);
 
     // Once the turn is over there is no leftover live activity.
     const state = (await (await fetch(`${h.base}/api/state`)).json()) as { agents: any[] };

@@ -3,7 +3,12 @@ import { appendLine, readLastLines } from "./files.ts";
 import type { Usage } from "./types.ts";
 import type { ToolActivity } from "./toolActivity.ts";
 
-export type Suggestion = { agentId: string; reason: string };
+export type Suggestion = {
+  agentId: string;
+  reason: string;
+  /** A ready-to-send message for that teammate, in the user's voice. Clicking the chip puts it in the message box. */
+  message?: string;
+};
 
 export type TranscriptEntry = {
   id: string;

@@ -53,7 +53,8 @@ function buildSystem(input: ContextInput): string {
       ? `## Where you are\nYou are in the team room with ${user}. Teammates may reply too, so keep your answer ` +
           `short and do not repeat what others said. Always answer the request yourself, in your own reply. ` +
           `Only after you have answered, if another teammate's expertise would clearly help, you may also call ` +
-          `suggest_next. It is an extra and never replaces your answer.`
+          `suggest_next. It is an extra and never replaces your answer. Give it a "message": the exact words ` +
+          `${user} could send that teammate, self-contained, because they may not have seen this chat.`
       : `## Where you are\nYou are in a private chat with ${user}. Keep your answer short and useful.`,
   );
 

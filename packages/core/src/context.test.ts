@@ -194,3 +194,8 @@ test("agents with tools are told to call tools for real and how to read the tool
   assert.doesNotMatch(buildContext(input([e("user", "hi")], { agent: agent("a", "A", { tools: [] }) })).system, /## Using tools/);
   assert.doesNotMatch(buildContext(input([e("user", "hi")], { agent: agent("a", "A", { tools: ["suggest_next"] }) })).system, /## Using tools/);
 });
+
+test("in the room, agents are told to give suggest_next a self-contained message in the user's voice", () => {
+  const { system } = buildContext(input([e("user", "hi")], { mode: "room" }));
+  assert.match(system, /Give it a "message": the exact words Kevin could send that teammate, self-contained/);
+});

@@ -1,3 +1,4 @@
+import { draftForChip } from "/chips.js";
 import { renderBoard, renderMarkdown } from "/markdown.js";
 
 const ACCENTS = {
@@ -177,7 +178,12 @@ function renderMessages(stick = true) {
         if (!target || target.status !== "active") continue;
         const chip = el(
           "button",
-          { type: "button", class: "chip", onclick: () => pickSuggestion(s.agentId) },
+          {
+            type: "button",
+            class: "chip",
+            title: s.message ? `Drafts this message for you to send:\n${s.message}` : undefined,
+            onclick: () => pickSuggestion(s),
+          },
           el("b", { text: `Ask ${target.name}` }),
           s.reason ? el("span", { text: `: ${s.reason}` }) : null,
         );
@@ -233,17 +239,24 @@ function activityTrace(entry) {
   return box;
 }
 
-function pickSuggestion(agentId) {
-  if (state.channel.startsWith("dm:")) {
-    openChannel(`dm:${agentId}`);
-  } else {
-    const a = state.byId.get(agentId);
-    els.input.value = `@${agentId} ${els.input.value}`.replace(/\s+$/, " ");
-    els.input.focus();
-    els.input.setSelectionRange(els.input.value.length, els.input.value.length);
-    autosize();
-    els.hint.textContent = `Your message will go straight to ${a.name}. Clear the @ to let the Floor manager route it.`;
-  }
+/** A chip click only fills the message box (and opens their chat from a private chat). It never sends. */
+async function pickSuggestion(chip) {
+  const target = state.byId.get(chip.agentId);
+  const inDm = state.channel.startsWith("dm:");
+  const { text, drafted } = draftForChip(chip, { inDm, current: els.input.value });
+  if (inDm) await openChannel(`dm:${chip.agentId}`);
+  els.input.value = text;
+  autosize();
+  els.input.focus();
+  els.input.setSelectionRange(text.length, text.length);
+  const name = target?.name ?? chip.agentId;
+  els.hint.textContent = drafted
+    ? inDm
+      ? `Drafted for ${name}. Edit it if you like, then press Enter to send.`
+      : `Drafted for ${name}. Edit it if you like, then press Enter. It goes straight to ${name}.`
+    : inDm
+      ? defaultHint()
+      : `Your message will go straight to ${name}. Clear the @ to let the Floor manager route it.`;
 }
 
 /* ---------- Channels ---------- */
