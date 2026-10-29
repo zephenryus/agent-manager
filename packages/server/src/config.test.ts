@@ -47,6 +47,15 @@ test("explicit values are used", () => {
   assert.deepEqual(c.prices, { inputPerMTok: 3, outputPerMTok: 15 });
 });
 
+test("the daily limit defaults by provider and can be switched off with null", () => {
+  assert.equal(parseConfig(minimal, "/h").dailyTokenLimit, 200_000);
+  const ollama = { provider: "ollama", ollama: { models: { router: "g", specialist: "g" } } };
+  assert.equal(parseConfig(ollama, "/h").dailyTokenLimit, null);
+  assert.equal(parseConfig({ ...ollama, dailyTokenLimit: 5000 }, "/h").dailyTokenLimit, 5000);
+  assert.equal(parseConfig({ ...minimal, dailyTokenLimit: null }, "/h").dailyTokenLimit, null);
+  assert.throws(() => parseConfig({ ...ollama, dailyTokenLimit: 0 }, "/h"), /dailyTokenLimit.*at least 1.*or null for no limit/);
+});
+
 test("mistakes name the field", () => {
   const bad = (patch: object, re: RegExp) => assert.throws(() => parseConfig({ ...minimal, ...patch }), (e) => e instanceof ConfigError && re.test(e.message));
   bad({ dailyTokenLimit: 0 }, /dailyTokenLimit.*at least 1/);

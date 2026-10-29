@@ -86,7 +86,7 @@ async function main() {
   let userName = "You";
   let defaultBoard = "pi.md";
   let readableFolders = ["Interviews"];
-  let dailyLimit = 1_000_000;
+  let dailyLimit: number | null = 1_000_000;
   let prices: { inputPerMTok: number; outputPerMTok: number } | undefined;
   let providers: Record<ModelTier, Provider>;
   let modelNote = "pretend model";
@@ -192,7 +192,8 @@ async function main() {
     console.log(`\nAgent manager${demo ? " (demo: pretend model, temporary vault)" : ""}`);
     console.log(`  Open http://localhost:${port}`);
     console.log(`  Vault: ${vault.root}`);
-    console.log(`  Models: ${modelNote}\n`);
+    console.log(`  Models: ${modelNote}`);
+    console.log(`  Daily token limit: ${dailyLimit === null ? "none (usage is still counted)" : dailyLimit.toLocaleString("en-US")}\n`);
   });
 
   const stop = () => {

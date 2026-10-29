@@ -19,6 +19,8 @@ Then open http://localhost:4317 (demo: the port is printed). The server only lis
 transcripts live; it is created on first run (seeded from `sample-vault`) and should NOT be inside this repo.
 It is its own git repo, and every message you send is saved as a commit there. `dailyTokenLimit` is the day's token
 budget (input + output); the pen at the bottom of the board shows what is left, warns at 80% and stops at 100%.
+A limit only matters when tokens cost money, so it can be turned off: set `"dailyTokenLimit": null` for no limit
+(usage is still counted and shown). Left out, it is 200,000 for Bedrock and no limit for a local Ollama model.
 
 Agent files: each agent gets a personal folder, `workspaces/<agent-id>/`, and the team shares `workspaces/shared/`.
 Agents with the `files_write` tool (listed in their frontmatter) can write only there; everyone with `files_read`

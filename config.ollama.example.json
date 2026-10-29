@@ -12,7 +12,7 @@
   },
   "vaultPath": "~/agent-manager-test-vault",
   "userName": "Kevin",
-  "dailyTokenLimit": 200000,
+  "dailyTokenLimit": null,
   "port": 4318,
   "defaultBoard": "pi.md"
 }

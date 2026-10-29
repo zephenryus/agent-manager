@@ -15,7 +15,8 @@ type CommonConfig = {
   /** Where your real boards, notes and transcripts live. Outside the repo. */
   vaultPath: string;
   userName: string;
-  dailyTokenLimit: number;
+  /** Tokens per day, or null for no limit (the default for a free local model). */
+  dailyTokenLimit: number | null;
   port: number;
   defaultBoard: string;
   /** Vault folders agents may read (read-only). */
@@ -100,6 +101,20 @@ function parseOllama(raw: unknown): OllamaConfig {
   return result;
 }
 
+/**
+ * A limit only matters when tokens cost money. Left out, it is 200,000 a day for a cloud provider and no limit
+ * for a local one. null means no limit; usage is still counted and shown.
+ */
+function parseDailyLimit(v: unknown, provider: "bedrock" | "ollama"): number | null {
+  if (v === undefined) return provider === "ollama" ? null : 200_000;
+  if (v === null) return null;
+  try {
+    return num(v, "dailyTokenLimit", 0, { int: true, min: 1 });
+  } catch (err) {
+    throw new ConfigError(`${(err as Error).message} (or null for no limit)`);
+  }
+}
+
 export function parseConfig(raw: unknown, home: string = homedir()): AppConfig {
   const c = obj(raw);
   const prices = c.prices === undefined ? undefined : obj(c.prices);
@@ -110,7 +125,7 @@ export function parseConfig(raw: unknown, home: string = homedir()): AppConfig {
   const common: CommonConfig = {
     vaultPath: resolve(expandHome(str(c.vaultPath, "vaultPath", "~/agent-manager-vault"), home)),
     userName: str(c.userName, "userName", "You"),
-    dailyTokenLimit: num(c.dailyTokenLimit, "dailyTokenLimit", 200_000, { int: true, min: 1 }),
+    dailyTokenLimit: parseDailyLimit(c.dailyTokenLimit, provider),
     port: num(c.port, "port", DEFAULT_PORT, { int: true, min: 1, max: 65535 }),
     defaultBoard: str(c.defaultBoard, "defaultBoard", "pi.md"),
     readableFolders: parseReadableFolders(c.readableFolders),

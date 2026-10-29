@@ -12,9 +12,11 @@ export type BudgetSnapshot = {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
-  limit: number;
-  /** totalTokens / limit (can exceed 1 by at most one model call). */
-  fraction: number;
+  /** Daily limit, or null when there is no limit (for example with a free local model). */
+  limit: number | null;
+  /** totalTokens / limit (can exceed 1 by at most one model call). Null when there is no limit. */
+  fraction: number | null;
+  /** Always "ok" when there is no limit. */
   state: BudgetState;
   /** Only when prices are configured. */
   estimatedCostUsd?: number;
@@ -23,8 +25,8 @@ export type BudgetSnapshot = {
 export type BudgetOptions = {
   /** Folder for the daily ledgers (<dir>/YYYY-MM-DD.jsonl). Created on first write. */
   dir: string;
-  /** Daily limit in tokens (input + output). */
-  dailyLimit: number;
+  /** Daily limit in tokens (input + output), or null for no limit: usage is still counted, nothing ever stops. */
+  dailyLimit: number | null;
   /** Fraction of the limit at which state becomes "warn". Default 0.8. */
   warnAt?: number;
   prices?: Prices;
@@ -44,8 +46,8 @@ export class BudgetError extends Error {
   constructor(snapshot: BudgetSnapshot) {
     super(
       `Daily token limit reached (${snapshot.totalTokens.toLocaleString("en-US")} of ` +
-        `${snapshot.limit.toLocaleString("en-US")} tokens used today). ` +
-        `Raise dailyTokenLimit in your config to continue.`,
+        `${(snapshot.limit ?? 0).toLocaleString("en-US")} tokens used today). ` +
+        `Raise dailyTokenLimit in your config, or set it to null for no limit.`,
     );
     this.name = "BudgetError";
     this.snapshot = snapshot;
@@ -58,8 +60,9 @@ function localDate(d: Date): string {
 }
 
 export function createBudget(opts: BudgetOptions): Budget {
-  if (!Number.isFinite(opts.dailyLimit) || opts.dailyLimit <= 0) {
-    throw new Error("dailyLimit must be a positive number of tokens");
+  const limit = opts.dailyLimit;
+  if (limit !== null && (!Number.isFinite(limit) || limit <= 0)) {
+    throw new Error("dailyLimit must be a positive number of tokens, or null for no limit");
   }
   const now = opts.now ?? (() => new Date());
   const warnAt = opts.warnAt ?? 0.8;
@@ -100,14 +103,15 @@ export function createBudget(opts: BudgetOptions): Budget {
 
   function toSnapshot(t: { date: string; input: number; output: number }): BudgetSnapshot {
     const total = t.input + t.output;
-    const fraction = total / opts.dailyLimit;
-    const state: BudgetState = total >= opts.dailyLimit ? "stopped" : fraction >= warnAt ? "warn" : "ok";
+    const fraction = limit === null ? null : total / limit;
+    const state: BudgetState =
+      limit === null || fraction === null ? "ok" : total >= limit ? "stopped" : fraction >= warnAt ? "warn" : "ok";
     const snap: BudgetSnapshot = {
       date: t.date,
       inputTokens: t.input,
       outputTokens: t.output,
       totalTokens: total,
-      limit: opts.dailyLimit,
+      limit,
       fraction,
       state,
     };

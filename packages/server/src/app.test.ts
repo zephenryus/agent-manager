@@ -39,7 +39,7 @@ type Harness = {
 async function start(
   opts: {
     provider?: Provider;
-    dailyLimit?: number;
+    dailyLimit?: number | null;
     git?: boolean;
   } = {},
 ): Promise<Harness> {
@@ -53,7 +53,7 @@ async function start(
 
   const vault = openVault(vaultRoot);
   const { agents } = await loadAgents(vault.agentsDir, [...KNOWN_TOOLS]);
-  const budget = createBudget({ dir: join(vaultRoot, "usage"), dailyLimit: opts.dailyLimit ?? 1_000_000 });
+  const budget = createBudget({ dir: join(vaultRoot, "usage"), dailyLimit: opts.dailyLimit === undefined ? 1_000_000 : opts.dailyLimit });
   const base = opts.provider ?? createDemoProvider({ delayMs: 0 });
   const wrapped = withBudget(base, budget);
   const providers: Record<ModelTier, Provider> = { router: wrapped, specialist: wrapped };
@@ -286,6 +286,21 @@ test("expired credentials come back as 401 with the fix", async () => {
     const s = (await (await fetch(`${h.base}/api/state`)).json()) as { busy: boolean; agents: any[] };
     assert.equal(s.busy, false);
     assert.ok(s.agents.every((a) => a.state === "idle"));
+  } finally {
+    await h.close();
+  }
+});
+
+test("with no daily limit, messages keep working and the budget shows no limit", async () => {
+  const h = await start({ dailyLimit: null });
+  try {
+    for (const text of ["hello @floor-manager", "hello again @floor-manager"]) {
+      assert.equal((await post(h, { text })).status, 200);
+    }
+    const state = (await (await fetch(`${h.base}/api/state`)).json()) as { budget: { limit: number | null; state: string; totalTokens: number } };
+    assert.equal(state.budget.limit, null);
+    assert.equal(state.budget.state, "ok");
+    assert.ok(state.budget.totalTokens > 0, "usage is still counted");
   } finally {
     await h.close();
   }

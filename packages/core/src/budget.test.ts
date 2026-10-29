@@ -7,11 +7,11 @@ import { BudgetError, createBudget, withBudget } from "./budget.ts";
 import type { BudgetSnapshot } from "./budget.ts";
 import { createFakeProvider, reply } from "./providers/fake.ts";
 
-async function setup(extra: { dailyLimit?: number; prices?: { inputPerMTok: number; outputPerMTok: number } } = {}) {
+async function setup(extra: { dailyLimit?: number | null; prices?: { inputPerMTok: number; outputPerMTok: number } } = {}) {
   const dir = join(await mkdtemp(join(tmpdir(), "am-budget-")), "usage");
   let day = new Date(2026, 9, 28, 9, 0, 0); // local time
   const make = () =>
-    createBudget({ dir, dailyLimit: extra.dailyLimit ?? 100, now: () => day, ...(extra.prices ? { prices: extra.prices } : {}) });
+    createBudget({ dir, dailyLimit: extra.dailyLimit === undefined ? 100 : extra.dailyLimit, now: () => day, ...(extra.prices ? { prices: extra.prices } : {}) });
   return { dir, make, setDay: (d: Date) => (day = d) };
 }
 
@@ -119,4 +119,53 @@ test("withBudget counts each model call and blocks once the limit is reached", a
   await assert.rejects(() => wrapped.complete(req), BudgetError);
   assert.equal(inner.requests.length, 2, "the blocked call never reached the model");
   assert.equal(wrapped.id, "fake");
+});
+
+test("with no limit, usage is counted and shown but nothing ever stops or warns", async () => {
+  const { make } = await setup({ dailyLimit: null });
+  const budget = make();
+  assert.deepEqual(await budget.snapshot(), {
+    date: "2026-10-28",
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    limit: null,
+    fraction: null,
+    state: "ok",
+  });
+  const snap = await budget.record({ inputTokens: 900_000_000, outputTokens: 100_000_000 }, "big");
+  assert.equal(snap.totalTokens, 1_000_000_000);
+  assert.equal(snap.limit, null);
+  assert.equal(snap.fraction, null);
+  assert.equal(snap.state, "ok");
+  await budget.assertAvailable(); // does not throw
+});
+
+test("with no limit, calls always reach the model, usage persists, and prices still estimate cost", async () => {
+  const prices = { inputPerMTok: 3, outputPerMTok: 15 };
+  const { make } = await setup({ dailyLimit: null, prices });
+  const budget = make();
+  const inner = createFakeProvider(Array.from({ length: 50 }, () => reply("x", { inputTokens: 1_000_000, outputTokens: 1_000_000 })));
+  const wrapped = withBudget(inner, budget);
+  const req = { system: "s", messages: [], tools: [] };
+  for (let i = 0; i < 50; i++) await wrapped.complete(req);
+  assert.equal(inner.requests.length, 50);
+  const snap = await make().snapshot(); // a fresh instance reads the ledger back
+  assert.equal(snap.totalTokens, 100_000_000);
+  assert.equal(snap.state, "ok");
+  assert.equal(snap.estimatedCostUsd, 50 * 3 + 50 * 15);
+});
+
+test("a limit of zero or less is still rejected, and the message points to null", async () => {
+  const dir = join(await mkdtemp(join(tmpdir(), "am-budget-")), "usage");
+  for (const bad of [0, -5, Number.NaN, Infinity]) {
+    assert.throws(() => createBudget({ dir, dailyLimit: bad }), /positive number of tokens, or null for no limit/, String(bad));
+  }
+});
+
+test("the limit-reached message offers null as the way out", async () => {
+  const { make } = await setup({ dailyLimit: 10 });
+  const budget = make();
+  await budget.record({ inputTokens: 10, outputTokens: 0 }, "x");
+  await assert.rejects(() => budget.assertAvailable(), /Raise dailyTokenLimit in your config, or set it to null for no limit/);
 });

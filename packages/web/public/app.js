@@ -1,3 +1,4 @@
+import { describeBudget } from "/budget.js";
 import { draftForChip } from "/chips.js";
 import { renderBoard, renderMarkdown } from "/markdown.js";
 
@@ -78,7 +79,6 @@ const accentOf = (agent) => (agent && ACCENTS[agent.accent]) || "var(--gray)";
 const nameOf = (id) => (id === "user" ? state.me : state.byId.get(id)?.name ?? id);
 const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-const fmtNum = (n) => n.toLocaleString("en-US");
 
 async function api(path, options) {
   const res = await fetch(path, options);
@@ -453,14 +453,19 @@ function approvalCard(ap) {
 /* ---------- Token meter ---------- */
 function renderBudget(b) {
   state.budget = b;
-  const left = Math.max(0, 1 - b.fraction);
-  els.ink.style.width = `${(left * 100).toFixed(1)}%`;
-  els.marker.dataset.state = b.state;
-  els.marker.setAttribute("aria-valuemax", String(b.limit));
+  const view = describeBudget(b);
+  els.ink.style.width = `${view.inkPercent}%`;
+  els.marker.dataset.state = view.state;
   els.marker.setAttribute("aria-valuenow", String(b.totalTokens));
-  const cost = b.estimatedCostUsd !== undefined ? ` (about $${b.estimatedCostUsd.toFixed(2)})` : "";
-  const tail = b.state === "stopped" ? " Limit reached for today." : b.state === "warn" ? " Running low." : "";
-  els.tray.textContent = `${fmtNum(b.totalTokens)} of ${fmtNum(b.limit)} tokens used today${cost}.${tail}`;
+  // A meter needs a maximum; with no limit there is none, so describe it in words instead.
+  if (view.max === null) {
+    els.marker.removeAttribute("aria-valuemax");
+    els.marker.setAttribute("aria-valuetext", view.text);
+  } else {
+    els.marker.setAttribute("aria-valuemax", String(view.max));
+    els.marker.removeAttribute("aria-valuetext");
+  }
+  els.tray.textContent = view.text;
 }
 
 /* ---------- Busy ---------- */
