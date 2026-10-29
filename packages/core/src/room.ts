@@ -53,6 +53,8 @@ export type RoomOptions = {
   router: Router;
   userName?: string;
   clock?: Clock;
+  /** IANA zone agents are told the time in (default: this computer's). */
+  timeZone?: string;
   onEvent?: (e: RoomEvent) => void;
   /** Vault folders agents with the files_* tools may read (read-only), for example ["Interviews"]. The workspaces folder is always readable. */
   readableFolders?: string[];
@@ -171,6 +173,8 @@ export function createRoom(opts: RoomOptions): Room {
             boards,
             readable,
             mode: sendOpts.dm !== undefined ? "dm" : "room",
+            now: clock.now(),
+            ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),
             ...(opts.userName ? { userName: opts.userName } : {}),
           });
 

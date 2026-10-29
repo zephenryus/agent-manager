@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AgentDef } from "./agents.ts";
-import { buildContext, buildMessages } from "./context.ts";
+import { buildContext, buildMessages, formatNow } from "./context.ts";
 import type { ContextInput } from "./context.ts";
 import type { TranscriptEntry } from "./transcript.ts";
 
@@ -198,4 +198,14 @@ test("agents with tools are told to call tools for real and how to read the tool
 test("in the room, agents are told to give suggest_next a self-contained message in the user's voice", () => {
   const { system } = buildContext(input([e("user", "hi")], { mode: "room" }));
   assert.match(system, /Give it a "message": the exact words Kevin could send that teammate, self-contained/);
+});
+
+test("the current time is in the prompt when given, in the chosen zone, and absent when not", () => {
+  const now = new Date(Date.UTC(2026, 9, 29, 2, 32)); // 8:32 PM on the 28th in Denver (UTC-6)
+  const denver = buildContext(input([e("user", "hi")], { now, timeZone: "America/Denver" })).system;
+  assert.match(denver, /## Right now\nIt is Wednesday, October 28, 2026 at 8:32 PM \(2026-10-28, America\/Denver\)\./);
+  const utc = buildContext(input([e("user", "hi")], { now, timeZone: "UTC" })).system;
+  assert.match(utc, /Thursday, October 29, 2026 at 2:32 AM \(2026-10-29, UTC\)/);
+  assert.doesNotMatch(buildContext(input([e("user", "hi")])).system, /Right now/);
+  assert.match(formatNow(now), /^\w+, \w+ \d+, 2026 at /);
 });

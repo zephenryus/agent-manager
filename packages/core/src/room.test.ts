@@ -33,6 +33,7 @@ async function setup(opts: { routerScript?: ModelResponse[]; specialistScript?: 
     router: createLlmRouter({ provider: routerProvider, agents, orchestratorId: "floor-manager" }),
     userName: "Kevin",
     clock,
+    timeZone: "UTC",
     onEvent: (e) => events.push(e),
   });
   return { root, vault, room, routerProvider, specialist, events, agents };
@@ -452,4 +453,10 @@ test("a turn that runs out of steps is marked, so a half-finished reply is not m
   const result = await room.send("@synthesizer loop forever");
   assert.equal(result.replies[0]!.stopped, "max_steps");
   assert.equal(result.replies[0]!.tools?.length, 3);
+});
+
+test("every agent call is told the current date and time", async () => {
+  const { room, specialist } = await setup({ routerScript: [route(["research-lead"])], specialistScript: [reply("ok")] });
+  await room.send("what day is it?");
+  assert.match(specialist.requests[0]!.system, /## Right now\nIt is Tuesday, October 27, 2026 at 8:00 PM \(2026-10-27, UTC\)\./);
 });

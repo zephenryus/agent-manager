@@ -23,7 +23,19 @@ export type ContextInput = {
   readable?: string[];
   mode: "room" | "dm";
   userName?: string;
+  /** The current moment. Models have no clock, and every request starts from nothing, so it goes in each prompt. */
+  now?: Date;
+  /** IANA zone the time is shown in (default: this computer's). */
+  timeZone?: string;
 };
+
+/** "Wednesday, October 28, 2026 at 8:32 PM (2026-10-28, America/Denver)". */
+export function formatNow(now: Date, timeZone?: string): string {
+  const zone = timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const long = new Intl.DateTimeFormat("en-US", { dateStyle: "full", timeStyle: "short", timeZone: zone }).format(now);
+  const iso = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: zone }).format(now);
+  return `${long} (${iso}, ${zone})`;
+}
 
 export type BuiltContext = { system: string; messages: Message[] };
 
@@ -41,6 +53,13 @@ function buildSystem(input: ContextInput): string {
   const sections: string[] = [agent.charter.trim()];
 
   sections.push(`## Who you are\nYou are ${agent.name}, ${agent.role}. Your id is "${agent.id}".`);
+
+  if (input.now) {
+    sections.push(
+      `## Right now\nIt is ${formatNow(input.now, input.timeZone)}. Use this for today's date, deadlines and how old ` +
+        `something is. Never guess the date.`,
+    );
+  }
 
   if (others.length > 0) {
     sections.push(
