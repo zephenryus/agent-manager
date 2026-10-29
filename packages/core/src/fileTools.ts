@@ -19,6 +19,7 @@ export const MAX_READ_CHARS = 12_000;
 export const MAX_FILE_BYTES = 2_000_000;
 const MAX_LIST_ENTRIES = 100;
 const MAX_LIST_DEPTH = 3;
+const MAX_NEARBY = 15;
 
 export type FileToolOptions = {
   vault: Vault;
@@ -53,17 +54,46 @@ export function createFileTools(opts: FileToolOptions): Tool[] {
     }
     const root = resolve(opts.vault.root, parts[0]!);
     let realRoot: string;
-    let real: string;
     try {
       realRoot = await realpath(root);
-      real = await realpath(resolve(opts.vault.root, ...parts));
     } catch (err) {
       if ((err as { code?: string }).code === "ENOENT") throw new Error(`Nothing at "${shown}"`);
+      throw err;
+    }
+    let real: string;
+    try {
+      real = await realpath(resolve(opts.vault.root, ...parts));
+    } catch (err) {
+      if ((err as { code?: string }).code === "ENOENT") throw new Error(`Nothing at "${shown}".${await nearby(parts, realRoot)}`);
       throw err;
     }
     // A link inside the folder that points elsewhere ends up outside the real folder.
     if (real !== realRoot && !real.startsWith(realRoot + sep)) throw new Error(`"${shown}" is not inside the allowed folders`);
     return { real, shown };
+  }
+
+  /**
+   * For a "not found" error: what IS in the closest folder that exists, so a model that guessed a file name
+   * can pick the right one instead of guessing again. Stays inside the allowed folder (no links out).
+   */
+  async function nearby(parts: string[], realRoot: string): Promise<string> {
+    for (let k = parts.length - 1; k >= 1; k--) {
+      const label = parts.slice(0, k).join("/");
+      try {
+        const real = await realpath(resolve(opts.vault.root, ...parts.slice(0, k)));
+        if (real !== realRoot && !real.startsWith(realRoot + sep)) return "";
+        const names = (await readdir(real, { withFileTypes: true }))
+          .filter((e) => !e.name.startsWith(".") && !e.isSymbolicLink() && (e.isDirectory() || (e.isFile() && READABLE_EXTENSIONS.includes(extname(e.name).toLowerCase()))))
+          .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
+          .sort((a, b) => a.localeCompare(b));
+        if (names.length === 0) return ` ${label} has no readable files.`;
+        const more = names.length > MAX_NEARBY ? `, and ${names.length - MAX_NEARBY} more (use files_list)` : "";
+        return ` Files in ${label}: ${names.slice(0, MAX_NEARBY).join(", ")}${more}`;
+      } catch {
+        // this level is missing or unreadable: try one level up
+      }
+    }
+    return "";
   }
 
   async function walk(dirReal: string, shown: string, depth: number, out: string[]): Promise<void> {

@@ -162,6 +162,7 @@ test("an unknown tool becomes an error result, not a crash", async () => {
   assert.ok(toolResult && toolResult.type === "tool_result");
   assert.equal(toolResult.isError, true);
   assert.match(toolResult.output, /Unknown tool/);
+  assert.match(toolResult.output, /Your tools are: /);
   assert.equal(result.stopped, "done");
 });
 
@@ -217,4 +218,15 @@ test("input messages are not mutated", async () => {
     tools: [],
   });
   assert.equal(input.length, 1);
+});
+
+test("an unknown tool error lists the tools the agent does have, so a small model can recover", async () => {
+  const alpha = { name: "alpha", description: "d", inputSchema: { type: "object" as const, properties: {} }, run: () => "ok" };
+  const beta = { ...alpha, name: "beta" };
+  const provider = createFakeProvider([callTool("c1", "files_reed", {}), reply("done")]);
+  const events: TurnEvent[] = [];
+  await runTurn({ provider, system: "sys", messages: [user("go")], tools: [alpha, beta], onEvent: (e) => events.push(e) });
+  const result = events.find((e) => e.type === "tool_result");
+  assert.ok(result && result.type === "tool_result");
+  assert.equal(result.output, "Unknown tool: files_reed. Your tools are: alpha, beta");
 });

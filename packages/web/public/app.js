@@ -26,7 +26,7 @@ const toolLabel = (t) => {
   return t.summary ? `${withWhat} ${t.summary}` : bare;
 };
 // The exact tool and what it worked on, for checking. A summary is only a path or item name, never contents.
-const traceLine = (t) => `${t.ok ? "✓" : "✗"} ${t.name}${t.summary ? ` · ${t.summary}` : ""}${t.ok ? "" : " (failed)"}`;
+const traceLine = (t) => `${t.ok ? "✓" : "✗"} ${t.name}${t.summary ? ` · ${t.summary}` : ""}${t.ok ? "" : t.error ? ` — ${t.error}` : " (failed)"}`;
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -524,7 +524,7 @@ function onRoomEvent(ev) {
       if (ev.phase === "start") {
         a.activity.current = { name: ev.name, summary: ev.summary };
       } else {
-        a.activity.done.push({ name: ev.name, summary: ev.summary, ok: ev.ok });
+        a.activity.done.push({ name: ev.name, summary: ev.summary, ok: ev.ok, error: ev.error });
         a.activity.current = null;
       }
       renderMessages(false);

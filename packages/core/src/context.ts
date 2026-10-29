@@ -1,5 +1,6 @@
 import type { AgentDef } from "./agents.ts";
 import type { TranscriptEntry } from "./transcript.ts";
+import { formatToolRecord } from "./toolActivity.ts";
 import type { Message } from "./types.ts";
 import { SHARED_DIR, WORKSPACES_DIR } from "./workspaces.ts";
 
@@ -100,6 +101,15 @@ function buildSystem(input: ContextInput): string {
         `paths and .md, .txt, .csv, .tsv or .json files. When you tell someone about saved work, give the file path.`,
     );
   }
+  if (agent.tools.some((t) => t !== "suggest_next")) {
+    sections.push(
+      `## Using tools\nWhen you need a tool, call it; never describe a call you did not make or say you are waiting ` +
+        `on one. After a tool fails, read the error: it says what went wrong and often what to use instead. ` +
+        `Below your earlier replies the app may add a bracketed "Record of your tool calls" line. The app writes ` +
+        `it, not you: use it to answer questions about what happened, including exact errors, and never write ` +
+        `such a line yourself.`,
+    );
+  }
   sections.push(
     `## Working with ${user}\n${user} is who you work for. If ${user} says this is a test, or asks for sample or ` +
       `mock data, give it, label it clearly as MOCK so nobody mistakes it for real evidence, and carry on. ` +
@@ -117,6 +127,12 @@ function buildSystem(input: ContextInput): string {
  * - consecutive same-role messages are merged
  * - the conversation starts and ends with a "user" message
  */
+/** What the agent called while writing a past reply, so it can answer "what was the error?" later. */
+function toolRecordFor(entry: TranscriptEntry): string {
+  if (!entry.tools?.length && entry.stopped === undefined) return "";
+  return `\n\n[Record of your tool calls for the reply above, kept by the app: ${formatToolRecord(entry.tools ?? [], entry.stopped)}]`;
+}
+
 export function buildMessages(input: ContextInput): Message[] {
   const { agent, roster } = input;
   const user = input.userName ?? "the user";
@@ -128,7 +144,7 @@ export function buildMessages(input: ContextInput): Message[] {
     const own = entry.from === agent.id;
     const role: Turn["role"] = own ? "assistant" : "user";
     const text = own
-      ? entry.text
+      ? entry.text + toolRecordFor(entry)
       : entry.from === "user"
         ? `${user}: ${entry.text}`
         : entry.from === "system"

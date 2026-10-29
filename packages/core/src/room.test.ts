@@ -391,6 +391,7 @@ test("a reply records the tools the agent called, in order, with ok or failed, a
     callTool("a2", "files_read", { path: "Interviews/missing.md" }),
     callTool("a3", "notes_head", {}),
     reply("All done."),
+    reply("It said I may only read inside workspaces."),
   ]);
   const routerProvider = createFakeProvider([]);
   const room = createRoom({
@@ -409,13 +410,22 @@ test("a reply records the tools the agent called, in order, with ok or failed, a
   });
   const result = await room.send("@synthesizer do the thing");
   const entry = result.replies[0]!;
-  assert.deepEqual(entry.tools, [
+  assert.deepEqual(entry.tools?.map(({ error: _error, ...rest }) => rest), [
     { name: "files_write", summary: "workspaces/shared/a.md", ok: true },
     { name: "files_read", summary: "Interviews/missing.md", ok: false },
     { name: "notes_head", summary: "", ok: true },
   ]);
+  // A failure keeps its reason; successes carry none.
+  assert.match(entry.tools![1]!.error!, /You can only read inside: workspaces/);
+  assert.equal(entry.tools![0]!.error, undefined);
   assert.ok(!JSON.stringify(entry).includes("TOP SECRET BODY"));
   assert.equal(entry.stopped, undefined);
+
+  // The agent's next turn sees a record of those calls, with the exact error, so it can answer "what failed?".
+  await room.send("@synthesizer what was the error?");
+  const followUp = JSON.stringify(specialist.requests.at(-1)!.messages);
+  assert.match(followUp, /Record of your tool calls for the reply above, kept by the app: ok files_write workspaces\/shared\/a\.md; FAILED files_read Interviews\/missing\.md: You can only read inside/);
+  assert.ok(!followUp.includes("TOP SECRET BODY"));
 
   // A reply with no tool calls records no tools at all: that absence is the signal.
   const plain = await room2.send("@synthesizer hi");

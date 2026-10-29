@@ -31,6 +31,7 @@ type Harness = {
   base: string;
   port: number;
   commits: string[];
+  logs: string[];
   vaultRoot: string;
   close(): Promise<void>;
 };
@@ -57,6 +58,7 @@ async function start(
   const wrapped = withBudget(base, budget);
   const providers: Record<ModelTier, Provider> = { router: wrapped, specialist: wrapped };
   const commits: string[] = [];
+  const logs: string[] = [];
 
   let app: ReturnType<typeof createApp>;
   const server: Server = createServer((req, res) => app.handle(req, res));
@@ -80,6 +82,7 @@ async function start(
         }),
     userName: "Kevin",
     defaultBoard: "pi.md",
+    log: (line: string) => logs.push(line),
     publicDir,
     allowedHosts: [`localhost:${port}`, `127.0.0.1:${port}`],
   });
@@ -87,6 +90,7 @@ async function start(
     base: `http://127.0.0.1:${port}`,
     port,
     commits,
+    logs,
     vaultRoot,
     close: () =>
       new Promise<void>((r) => {
@@ -588,13 +592,19 @@ test("tool use is shown live (which tool, on what, ok or failed) and saved on th
       ],
     );
     assert.ok(!JSON.stringify(events).includes("TOP SECRET BODY"));
+    // A failure carries its reason in the event and on the console; a success carries none.
+    const failed = tools.find((t) => t.phase === "done" && t.ok === false);
+    assert.match(failed.error, /You can only read inside/);
+    assert.equal(tools.find((t) => t.phase === "done" && t.ok === true).error, undefined);
+    assert.ok(h.logs.some((l) => /^tool failed: synthesizer files_read \(Interviews\/missing\.md\): You can only read inside/.test(l)), h.logs.join("\n"));
 
     const transcript = (await (await fetch(`${h.base}/api/transcript?channel=room`)).json()) as { entries: any[] };
     const last = transcript.entries.at(-1);
     assert.deepEqual(last.tools, [
       { name: "files_write", summary: "workspaces/shared/a.md", ok: true },
-      { name: "files_read", summary: "Interviews/missing.md", ok: false },
+      { name: "files_read", summary: "Interviews/missing.md", ok: false, error: last.tools[1].error },
     ]);
+    assert.match(last.tools[1].error, /You can only read inside/);
 
     // Once the turn is over there is no leftover live activity.
     const state = (await (await fetch(`${h.base}/api/state`)).json()) as { agents: any[] };

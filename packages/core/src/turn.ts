@@ -71,7 +71,7 @@ export async function runTurn(opts: TurnOptions): Promise<TurnResult> {
     const results: ToolResult[] = [];
     for (const call of res.toolCalls) {
       opts.onEvent?.({ type: "tool_call", id: call.id, name: call.name, input: call.input });
-      const result = await executeTool(toolsByName.get(call.name), call.id, call.name, call.input);
+      const result = await executeTool(toolsByName.get(call.name), [...toolsByName.keys()], call.id, call.name, call.input);
       opts.onEvent?.({
         type: "tool_result",
         id: result.id,
@@ -98,11 +98,15 @@ export async function runTurn(opts: TurnOptions): Promise<TurnResult> {
 
 async function executeTool(
   tool: Tool | undefined,
+  available: string[],
   id: string,
   name: string,
   input: Record<string, unknown>,
 ): Promise<ToolResult> {
-  if (!tool) return { id, name, output: `Unknown tool: ${name}`, isError: true };
+  if (!tool) {
+    const have = available.length > 0 ? available.join(", ") : "none";
+    return { id, name, output: `Unknown tool: ${name}. Your tools are: ${have}`, isError: true };
+  }
   try {
     return { id, name, output: await tool.run(input) };
   } catch (err) {

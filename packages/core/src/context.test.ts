@@ -167,3 +167,30 @@ test("agents with files_write are told where they may save files", () => {
   assert.match(writer, /shared folder is workspaces\/shared\//);
   assert.doesNotMatch(buildContext(input([e("user", "hi")], { agent: agent("a", "A", { tools: ["files_read"] }) })).system, /Your workspace/);
 });
+
+test("an agent sees a record of its own past tool calls, including exact errors, but not other agents'", () => {
+  const mine = { ...e("synthesizer", "I could not read most files."), tools: [
+    { name: "files_read", summary: "Interviews/a.md", ok: true },
+    { name: "files_read", summary: "Interviews/b.md", ok: false, error: 'Nothing at "Interviews/b.md".' },
+  ] };
+  const theirs = { ...e("research-lead", "I read everything."), tools: [{ name: "files_read", summary: "Interviews/z.md", ok: true }] };
+  const { messages } = buildContext(input([e("user", "read the notes"), mine, theirs, e("user", "what was the error?")], { agent: agent("synthesizer", "Synthesizer", { tools: ["files_read"] }) }));
+  const all = JSON.stringify(messages);
+  assert.match(all, /I could not read most files\.\\n\\n\[Record of your tool calls for the reply above, kept by the app: ok files_read Interviews\/a\.md; FAILED files_read Interviews\/b\.md: Nothing at/);
+  assert.doesNotMatch(all, /Interviews\/z\.md/);
+});
+
+test("a reply that ran out of steps is noted for the agent too", () => {
+  const cut = { ...e("synthesizer", "Partial."), stopped: "max_steps" as const };
+  const { messages } = buildContext(input([e("user", "go"), cut, e("user", "and?")], { agent: agent("synthesizer", "Synthesizer", { tools: ["files_read"] }) }));
+  assert.match(JSON.stringify(messages), /the turn ran out of steps/);
+});
+
+test("agents with tools are told to call tools for real and how to read the tool record", () => {
+  const withTools = buildContext(input([e("user", "hi")], { agent: agent("synthesizer", "Synthesizer", { tools: ["files_read"] }) })).system;
+  assert.match(withTools, /## Using tools/);
+  assert.match(withTools, /never describe a call you did not make/);
+  assert.match(withTools, /never write such a line yourself/);
+  assert.doesNotMatch(buildContext(input([e("user", "hi")], { agent: agent("a", "A", { tools: [] }) })).system, /## Using tools/);
+  assert.doesNotMatch(buildContext(input([e("user", "hi")], { agent: agent("a", "A", { tools: ["suggest_next"] }) })).system, /## Using tools/);
+});

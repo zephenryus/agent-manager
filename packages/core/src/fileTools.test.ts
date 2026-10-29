@@ -122,3 +122,28 @@ test("app-owned folders and odd folder names can never be made readable", () => 
   assert.doesNotThrow(() => assertReadableFolder("Interviews"));
   assert.throws(() => createFileTools({ vault: openVault(tmpdir()), folders: ["agents"] }), /cannot be made readable/);
 });
+
+test("a wrong file name gets the real names in that folder, so a model can fix its guess", async () => {
+  const { run } = await setup();
+  const err = await run("files_read", { path: "Interviews/interview-02-compliance.md" }).catch((e: Error) => e.message);
+  assert.match(String(err), /^Nothing at "Interviews\/interview-02-compliance\.md"\. Files in Interviews: a\.md, crlf\.txt, empty\.md, extra\/$/);
+  // A missing sub-folder falls back to the closest folder that exists. Hidden and unreadable files are not named.
+  const deeper = await run("files_read", { path: "Interviews/nope/x.md" }).catch((e: Error) => e.message);
+  assert.match(String(deeper), /Files in Interviews: a\.md/);
+  assert.doesNotMatch(String(deeper), /photo\.png|hidden/);
+  // A missing top-level folder has nothing to list.
+  assert.equal(await run("files_list", { folder: "artifacts/x" }).catch((e: Error) => e.message), "You can only read inside: Interviews");
+});
+
+test("the suggestion never names files reached through a link that leads out of the folder", async (t) => {
+  const { root, run } = await setup();
+  try {
+    await symlink(join(root, "agents"), join(root, "Interviews", "out"), "dir");
+  } catch {
+    t.skip("this system does not allow creating links without extra rights");
+    return;
+  }
+  const err = await run("files_read", { path: "Interviews/out/missing.md" }).catch((e: Error) => e.message);
+  assert.doesNotMatch(String(err), /floor-manager/);
+  assert.match(String(err), /^Nothing at|not inside the allowed folders/);
+});

@@ -14,6 +14,7 @@ import {
   readTail,
   isQuietTool,
   resolveApproval,
+  summarizeError,
   summarizeToolCall,
 } from "@am/core";
 import type {
@@ -127,9 +128,12 @@ export function createApp(opts: AppOptions): App {
           const summary = callLabels.get(key) ?? "";
           callLabels.delete(key);
           const ok = !e.event.isError;
-          act.done.push({ name: e.event.name, summary, ok });
+          const error = ok ? undefined : summarizeError(e.event.output);
+          act.done.push({ name: e.event.name, summary, ok, ...(error !== undefined ? { error } : {}) });
           act.current = null;
-          broadcast("room", { type: "tool", phase: "done", agentId: e.agentId, name: e.event.name, summary, ok });
+          broadcast("room", { type: "tool", phase: "done", agentId: e.agentId, name: e.event.name, summary, ok, ...(error !== undefined ? { error } : {}) });
+          // Also on the console, so a failure can be read after the browser tab is gone.
+          if (error !== undefined) log(`tool failed: ${e.agentId} ${e.event.name}${summary ? ` (${summary})` : ""}: ${error}`);
         }
         return;
       }

@@ -8,7 +8,7 @@ import { createNotes } from "./notes.ts";
 import { createNotesTools } from "./notesTools.ts";
 import { WORKSPACES_DIR, createWorkspaceTools } from "./workspaces.ts";
 import { createSuggestTool } from "./roomTools.ts";
-import { isQuietTool, summarizeToolCall } from "./toolActivity.ts";
+import { isQuietTool, summarizeError, summarizeToolCall } from "./toolActivity.ts";
 import type { ToolActivity } from "./toolActivity.ts";
 import { findMentions } from "./router.ts";
 import type { RouteDecision, Router } from "./router.ts";
@@ -202,7 +202,12 @@ export function createRoom(opts: RoomOptions): Room {
                 emit({ type: "agent_state", agentId: id, state: "working" });
               } else if (event.type === "tool_result" && !isQuietTool(event.name)) {
                 const call = calls.get(event.id);
-                activity.push({ name: event.name, summary: call?.summary ?? "", ok: !event.isError });
+                activity.push({
+                  name: event.name,
+                  summary: call?.summary ?? "",
+                  ok: !event.isError,
+                  ...(event.isError ? { error: summarizeError(event.output) } : {}),
+                });
               }
             },
           });
