@@ -14,7 +14,7 @@ async function setup(actor = "synthesizer") {
   await writeFile(join(root, "agents", "floor-manager.md"), "SECRET CHARTER");
   const vault = openVault(root);
   const tools = createWorkspaceTools({ vault, actor });
-  const write = (input: Record<string, unknown>) => tools.find((t) => t.name === "files_write")!.run(input);
+  const write = async (input: Record<string, unknown>): Promise<string> => tools.find((t) => t.name === "files_write")!.run(input);
   const read = (rel: string) => readFile(join(root, ...rel.split("/")), "utf8");
   return { root, vault, write, read };
 }
@@ -129,7 +129,7 @@ test("everything saved is readable by other agents with files_read, but not writ
   assert.match(files, /workspaces\/synthesizer\/analysis\.md/);
   assert.match(await reader.find((t) => t.name === "files_read")!.run({ path: "workspaces/synthesizer/analysis.md" }), /my private-ish analysis/);
   const other = createWorkspaceTools({ vault, actor: "research-lead" });
-  await assert.rejects(() => other[0]!.run({ path: "workspaces/synthesizer/analysis.md", content: "x", mode: "replace" }), /write only inside workspaces\/research-lead\//);
+  await assert.rejects(async () => other[0]!.run({ path: "workspaces/synthesizer/analysis.md", content: "x", mode: "replace" }), /write only inside workspaces\/research-lead\//);
 });
 
 test("ensureWorkspaces creates the shared folder and is safe to repeat", async () => {
