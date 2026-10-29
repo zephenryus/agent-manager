@@ -100,7 +100,7 @@ export function createWorklog(vault: Vault, clock: Clock = systemClock, timeZone
 }
 
 /** The tools whose results are recorded automatically in the log, because they change something. */
-export const LOGGED_TOOLS = ["files_write", "board_add", "board_edit", "board_set_status"];
+export const LOGGED_TOOLS = ["files_write", "board_add", "board_edit", "board_set_status", "brief_write"];
 
 /** The first line of a tool's result, shortened. These results are written by the app, not by the model. */
 export function autoLogText(output: string): string {

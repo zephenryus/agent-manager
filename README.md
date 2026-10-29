@@ -27,7 +27,7 @@ Agents with the `files_write` tool (listed in their frontmatter) can write only 
 can read every workspace. `readableFolders` (config, default `["Interviews"]`) adds more read-only folders, and
 `workspaces` is always readable. Lists in agent frontmatter can be inline (`tools: [a, b]`) or block style.
 
-Briefs: ask the Floor manager for a short brief and it saves one in `workspaces/shared/briefs/`. The Briefs tab on the
+Briefs: ask the Floor manager for a short brief and it saves one (with `brief_write`, which builds the page from a title, bottom line, bullets and details, and rejects paths that do not exist) in `workspaces/shared/briefs/`. The Briefs tab on the
 right lists them (newest first) and opens one to read. They are plain markdown files, so you can edit or add your own.
 
 Work log: the team shares a plain-text log in `worklog/YYYY-MM-DD.md`, one line per piece of work. The app adds a line

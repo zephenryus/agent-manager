@@ -14,6 +14,7 @@ import { findMentions } from "./router.ts";
 import type { RouteDecision, Router } from "./router.ts";
 import { LOGGED_TOOLS, autoLogText, createWorklog, createWorklogTools } from "./worklog.ts";
 import type { Worklog } from "./worklog.ts";
+import { createBriefTools } from "./briefs.ts";
 import { appendEntry, readTail, systemClock } from "./transcript.ts";
 import type { Clock, Suggestion, TranscriptEntry } from "./transcript.ts";
 import { runTurn } from "./turn.ts";
@@ -35,6 +36,8 @@ export const KNOWN_TOOLS = [
   "notes_tail",
   "notes_append",
   "notes_pin",
+  "brief_write",
+  "brief_read",
   "worklog_add",
   "worklog_read",
   "suggest_next",
@@ -294,6 +297,7 @@ function buildTools(agent: AgentDef, deps: ToolDeps): Tool[] {
     ...deps.fileTools,
     ...createWorkspaceTools({ vault: deps.vault, actor: agent.id }),
     ...createWorklogTools({ worklog: deps.worklog, actor: agent.id }),
+    ...createBriefTools({ vault: deps.vault, actor: agent.id }),
     ...createBoardWriteTools({
       vault: deps.vault,
       agents: deps.agents,
