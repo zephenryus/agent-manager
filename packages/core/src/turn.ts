@@ -5,6 +5,16 @@ export type TurnEvent =
   | { type: "tool_call"; id: string; name: string; input: Record<string, unknown> }
   | { type: "tool_result"; id: string; name: string; output: string; isError: boolean };
 
+/**
+ * Said to the model (never saved in the transcript) when it used tools and then stopped without writing anything.
+ * Small models do this a lot: they announce "I will read that file now", make the call, then go quiet.
+ */
+export const CONTINUE_NUDGE =
+  "[System note] You used tools but haven't written your answer yet. Carry on now: if you still need something, call the tool. Otherwise answer using what the tools returned.";
+
+/** How many times one turn will push a quiet model to carry on. Each push still costs a step. */
+const MAX_NUDGES = 2;
+
 export type TurnOptions = {
   provider: Provider;
   system: string;
@@ -44,6 +54,8 @@ export async function runTurn(opts: TurnOptions): Promise<TurnResult> {
   const usage: Usage = { inputTokens: 0, outputTokens: 0 };
   const texts: string[] = [];
   let steps = 0;
+  let nudges = 0;
+  let usedTools = false;
 
   while (steps < maxSteps) {
     steps++;
@@ -55,6 +67,13 @@ export async function runTurn(opts: TurnOptions): Promise<TurnResult> {
     });
     usage.inputTokens += res.usage.inputTokens;
     usage.outputTokens += res.usage.outputTokens;
+
+    // Used tools, then said nothing: the model stalled, not finished. Ask it to carry on (the empty step is not kept).
+    if (res.toolCalls.length === 0 && res.text.trim() === "" && usedTools && nudges < MAX_NUDGES && steps < maxSteps) {
+      nudges++;
+      history.push({ role: "user", text: CONTINUE_NUDGE });
+      continue;
+    }
 
     const assistant: Message = { role: "assistant", text: res.text, toolCalls: res.toolCalls };
     history.push(assistant);
@@ -68,6 +87,7 @@ export async function runTurn(opts: TurnOptions): Promise<TurnResult> {
       return { text: texts.join("\n\n"), produced, steps, usage, stopped: "done" };
     }
 
+    usedTools = true;
     const results: ToolResult[] = [];
     for (const call of res.toolCalls) {
       opts.onEvent?.({ type: "tool_call", id: call.id, name: call.name, input: call.input });

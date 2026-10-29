@@ -230,3 +230,35 @@ test("an unknown tool error lists the tools the agent does have, so a small mode
   assert.ok(result && result.type === "tool_result");
   assert.equal(result.output, "Unknown tool: files_reed. Your tools are: alpha, beta");
 });
+
+test("a model that goes quiet after its tools is nudged to carry on, and the nudge is not saved", async () => {
+  const noop: Tool = { name: "look", description: "d", inputSchema: { type: "object", properties: {} }, run: () => "found it" };
+  const provider = createFakeProvider([
+    callTool("c1", "look", {}, "I will look now."),
+    reply(""), // stalls
+    reply("Here is what I found."),
+  ]);
+  const result = await runTurn({ provider, system: "s", messages: [user("go")], tools: [noop] });
+  assert.equal(result.stopped, "done");
+  assert.equal(result.steps, 3);
+  assert.equal(result.text, "I will look now.\n\nHere is what I found.");
+  const sent = provider.requests[2]!.messages;
+  assert.match(JSON.stringify(sent.at(-1)), /haven't written your answer/);
+  assert.ok(!JSON.stringify(result.produced).includes("haven't written"), "the nudge stays out of the transcript");
+  assert.ok(result.produced.every((m) => m.role !== "assistant" || m.text !== "" || m.toolCalls.length > 0), "no empty assistant message is kept");
+});
+
+test("a quiet model is nudged at most twice, then the turn ends", async () => {
+  const noop: Tool = { name: "look", description: "d", inputSchema: { type: "object", properties: {} }, run: () => "ok" };
+  const provider = createFakeProvider([callTool("c1", "look", {}), reply(""), reply(""), reply(""), reply("never reached")]);
+  const result = await runTurn({ provider, system: "s", messages: [user("go")], tools: [noop], maxSteps: 10 });
+  assert.equal(result.steps, 4);
+  assert.equal(result.text, "");
+  assert.equal(result.stopped, "done");
+});
+
+test("an empty reply with no tools used is not nudged", async () => {
+  const provider = createFakeProvider([reply(""), reply("later")]);
+  const result = await runTurn({ provider, system: "s", messages: [user("go")], tools: [] });
+  assert.equal(result.steps, 1);
+});
