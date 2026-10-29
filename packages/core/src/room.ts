@@ -8,6 +8,8 @@ import { createNotes } from "./notes.ts";
 import { createNotesTools } from "./notesTools.ts";
 import { WORKSPACES_DIR, createWorkspaceTools } from "./workspaces.ts";
 import { createSuggestTool } from "./roomTools.ts";
+import { isQuietTool, summarizeToolCall } from "./toolActivity.ts";
+import type { ToolActivity } from "./toolActivity.ts";
 import { findMentions } from "./router.ts";
 import type { RouteDecision, Router } from "./router.ts";
 import { appendEntry, readTail, systemClock } from "./transcript.ts";
@@ -184,6 +186,8 @@ export function createRoom(opts: RoomOptions): Room {
             ...(focus && focusName !== undefined ? { focusName } : {}),
           });
 
+          const activity: ToolActivity[] = [];
+          const calls = new Map<string, { name: string; summary: string }>();
           const result = await runTurn({
             provider: opts.providers[agent.modelTier],
             system: ctx.system,
@@ -193,7 +197,13 @@ export function createRoom(opts: RoomOptions): Room {
             maxOutputTokens: agent.tokenCap,
             onEvent: (event) => {
               emit({ type: "turn", agentId: id, event });
-              if (event.type === "tool_call") emit({ type: "agent_state", agentId: id, state: "working" });
+              if (event.type === "tool_call") {
+                calls.set(event.id, { name: event.name, summary: summarizeToolCall(event.name, event.input) });
+                emit({ type: "agent_state", agentId: id, state: "working" });
+              } else if (event.type === "tool_result" && !isQuietTool(event.name)) {
+                const call = calls.get(event.id);
+                activity.push({ name: event.name, summary: call?.summary ?? "", ok: !event.isError });
+              }
             },
           });
 
@@ -206,6 +216,8 @@ export function createRoom(opts: RoomOptions): Room {
               text: result.text.trim() === "" ? "(no reply)" : result.text,
               usage: result.usage,
               ...(sink.length > 0 ? { suggestions: sink } : {}),
+              ...(activity.length > 0 ? { tools: activity } : {}),
+              ...(result.stopped === "max_steps" ? { stopped: "max_steps" as const } : {}),
             },
             clock,
           );

@@ -41,3 +41,25 @@ test("the floor manager does not suggest anyone", async () => {
   });
   assert.deepEqual(res.toolCalls, []);
 });
+
+test("for notes questions a specialist lists, then reads, before answering", async () => {
+  const tools = ["files_list", "files_read", "suggest_next"].map((name) => ({ name, description: "d", inputSchema: { type: "object" as const, properties: {} } }));
+  const base = { system: 'Your id is "synthesizer".', tools };
+  const first = await demo.complete({ ...base, messages: [{ role: "user", text: "pull themes from my interview notes" }] });
+  assert.deepEqual(first.toolCalls.map((c) => [c.name, c.input]), [["files_list", { folder: "Interviews" }]]);
+  const listed = [
+    { role: "user" as const, text: "pull themes from my interview notes" },
+    { role: "assistant" as const, text: "", toolCalls: first.toolCalls },
+    { role: "tool" as const, results: [{ id: first.toolCalls[0]!.id, name: "files_list", output: "Interviews/a.md (1 KB)\nInterviews/b.md (1 KB)" }] },
+  ];
+  const second = await demo.complete({ ...base, messages: listed });
+  assert.deepEqual(second.toolCalls.map((c) => [c.name, c.input]), [["files_read", { path: "Interviews/a.md" }]]);
+  const read = [...listed, { role: "assistant" as const, text: "", toolCalls: second.toolCalls }, { role: "tool" as const, results: [{ id: second.toolCalls[0]!.id, name: "files_read", output: "text" }] }];
+  const last = await demo.complete({ ...base, messages: read });
+  assert.deepEqual(last.toolCalls.map((c) => c.name), ["suggest_next"]);
+  assert.match(last.text, /Theme 1/);
+  // An empty folder skips the read, and other messages skip the lookups.
+  const empty = [listed[0]!, listed[1]!, { role: "tool" as const, results: [{ id: first.toolCalls[0]!.id, name: "files_list", output: "No readable files found." }] }];
+  assert.deepEqual((await demo.complete({ ...base, messages: empty })).toolCalls.map((c) => c.name), ["suggest_next"]);
+  assert.deepEqual((await demo.complete({ ...base, messages: [{ role: "user", text: "hello" }] })).toolCalls.map((c) => c.name), ["suggest_next"]);
+});

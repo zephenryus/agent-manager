@@ -13,8 +13,11 @@ import {
   ProviderAuthError,
   ProviderUnavailableError,
   createBudget,
+  callTool,
   createDemoProvider,
+  createFakeProvider,
   createLlmRouter,
+  reply,
   loadAgents,
   openVault,
   withBudget,
@@ -533,6 +536,69 @@ test("a model that cannot be reached comes back as 503 with the fix, and the ser
     assert.match(body.hint!, /Start Ollama/);
     const s = (await (await fetch(`${h.base}/api/state`)).json()) as { busy: boolean };
     assert.equal(s.busy, false);
+  } finally {
+    await h.close();
+  }
+});
+
+test("tool use is shown live (which tool, on what, ok or failed) and saved on the reply, without contents", async () => {
+  const provider = createFakeProvider([
+    callTool("t1", "files_write", { path: "workspaces/shared/a.md", content: "TOP SECRET BODY" }),
+    callTool("t2", "files_read", { path: "Interviews/missing.md" }),
+    callTool("t3", "suggest_next", { agent_id: "research-lead", reason: "More evidence" }, "Finished."),
+  ]);
+  const h = await start({ provider });
+  try {
+    const events: Array<{ event: string; data: any }> = [];
+    const ready = new Promise<void>((resolveReady, reject) => {
+      const req = request(`${h.base}/api/events`, (res) => {
+        let buf = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk: string) => {
+          buf += chunk;
+          let i: number;
+          while ((i = buf.indexOf("\n\n")) >= 0) {
+            const block = buf.slice(0, i);
+            buf = buf.slice(i + 2);
+            const ev = /^event: (.+)$/m.exec(block)?.[1];
+            const data = /^data: (.+)$/m.exec(block)?.[1];
+            if (ev && data) {
+              events.push({ event: ev, data: JSON.parse(data) });
+              if (ev === "hello") resolveReady();
+            }
+          }
+        });
+      });
+      req.on("error", reject);
+      req.end();
+    });
+    await ready;
+    const res = await post(h, { text: "@synthesizer save the themes" });
+    assert.equal(res.status, 200);
+    await new Promise((r) => setTimeout(r, 50));
+
+    const tools = events.filter((e) => e.data.type === "tool").map((e) => e.data);
+    assert.deepEqual(
+      tools.map((t) => [t.phase, t.name, t.summary, t.ok]),
+      [
+        ["start", "files_write", "workspaces/shared/a.md", undefined],
+        ["done", "files_write", "workspaces/shared/a.md", true],
+        ["start", "files_read", "Interviews/missing.md", undefined],
+        ["done", "files_read", "Interviews/missing.md", false],
+      ],
+    );
+    assert.ok(!JSON.stringify(events).includes("TOP SECRET BODY"));
+
+    const transcript = (await (await fetch(`${h.base}/api/transcript?channel=room`)).json()) as { entries: any[] };
+    const last = transcript.entries.at(-1);
+    assert.deepEqual(last.tools, [
+      { name: "files_write", summary: "workspaces/shared/a.md", ok: true },
+      { name: "files_read", summary: "Interviews/missing.md", ok: false },
+    ]);
+
+    // Once the turn is over there is no leftover live activity.
+    const state = (await (await fetch(`${h.base}/api/state`)).json()) as { agents: any[] };
+    assert.ok(state.agents.every((a) => a.activity === undefined));
   } finally {
     await h.close();
   }

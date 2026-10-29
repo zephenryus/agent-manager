@@ -13,6 +13,7 @@ export * from "./changes.ts";
 export * from "./context.ts";
 export * from "./fileTools.ts";
 export * from "./workspaces.ts";
+export * from "./toolActivity.ts";
 export * from "./files.ts";
 export * from "./frontmatter.ts";
 export * from "./hierarchy.ts";

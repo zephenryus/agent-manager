@@ -12,7 +12,9 @@ import {
   listBoardNames,
   loadBoards,
   readTail,
+  isQuietTool,
   resolveApproval,
+  summarizeToolCall,
 } from "@am/core";
 import type {
   AgentDef,
@@ -25,6 +27,7 @@ import type {
   Room,
   RoomEvent,
   Router,
+  ToolActivity,
   Vault,
   VaultGit,
 } from "@am/core";
@@ -81,6 +84,9 @@ const MAX_BODY = 64 * 1024;
 export function createApp(opts: AppOptions): App {
   const log = opts.log ?? (() => undefined);
   const agentStates = new Map<string, AgentState>(opts.agents.map((a) => [a.id, "idle"]));
+  // What each agent is doing right now, so a page opened or refreshed mid-turn can show it.
+  const agentActivity = new Map<string, { current: { name: string; summary: string } | null; done: ToolActivity[] }>();
+  const callLabels = new Map<string, string>(); // "<agent>/<call id>" -> summary, until the result arrives
   const clients = new Set<ServerResponse>();
   const activeAgents = opts.agents.filter((a) => a.status === "active");
   let busy = false;
@@ -101,10 +107,30 @@ export function createApp(opts: AppOptions): App {
     defaultBoard: opts.defaultBoard,
     ...(opts.readableFolders ? { readableFolders: opts.readableFolders } : {}),
     onEvent: (e: RoomEvent) => {
-      if (e.type === "agent_state") agentStates.set(e.agentId, e.state);
-      // Raw model internals stay on the server; the UI only needs what a person would see.
+      if (e.type === "agent_state") {
+        agentStates.set(e.agentId, e.state);
+        if (e.state === "thinking") agentActivity.set(e.agentId, { current: null, done: [] });
+        if (e.state === "idle") agentActivity.delete(e.agentId);
+      }
+      // Raw model internals stay on the server; the UI only needs what a person would see: which tool, on
+      // what (a path or item id, never file contents), and whether it worked.
       if (e.type === "turn") {
-        if (e.event.type === "tool_call") broadcast("room", { type: "tool", agentId: e.agentId, name: e.event.name });
+        const act = agentActivity.get(e.agentId) ?? { current: null, done: [] };
+        agentActivity.set(e.agentId, act);
+        if (e.event.type === "tool_call" && !isQuietTool(e.event.name)) {
+          const summary = summarizeToolCall(e.event.name, e.event.input);
+          act.current = { name: e.event.name, summary };
+          callLabels.set(`${e.agentId}/${e.event.id}`, summary);
+          broadcast("room", { type: "tool", phase: "start", agentId: e.agentId, name: e.event.name, summary });
+        } else if (e.event.type === "tool_result" && !isQuietTool(e.event.name)) {
+          const key = `${e.agentId}/${e.event.id}`;
+          const summary = callLabels.get(key) ?? "";
+          callLabels.delete(key);
+          const ok = !e.event.isError;
+          act.done.push({ name: e.event.name, summary, ok });
+          act.current = null;
+          broadcast("room", { type: "tool", phase: "done", agentId: e.agentId, name: e.event.name, summary, ok });
+        }
         return;
       }
       broadcast("room", e);
@@ -139,6 +165,7 @@ export function createApp(opts: AppOptions): App {
       isOrchestrator: a.isOrchestrator,
       reportsTo: a.reportsTo,
       state: agentStates.get(a.id) ?? "idle",
+      ...(agentActivity.has(a.id) ? { activity: agentActivity.get(a.id) } : {}),
     }));
 
   const listBoards = () => listBoardNames(opts.vault);

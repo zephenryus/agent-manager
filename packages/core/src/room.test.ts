@@ -382,3 +382,64 @@ test("an agent with files_write saves into shared and its own folder, and is ref
   assert.ok(!floor.requests[0]!.tools.some((t) => t.name === "files_write"));
   assert.doesNotMatch(floor.requests[0]!.system, /Your workspace/);
 });
+
+test("a reply records the tools the agent called, in order, with ok or failed, and nothing sensitive", async () => {
+  const root = await mkdtemp(join(tmpdir(), "am-room-activity-"));
+  const agents = (await loadAgents(SAMPLE_AGENTS, [...KNOWN_TOOLS])).agents;
+  const specialist = createFakeProvider([
+    callTool("a1", "files_write", { path: "workspaces/shared/a.md", content: "TOP SECRET BODY" }),
+    callTool("a2", "files_read", { path: "Interviews/missing.md" }),
+    callTool("a3", "notes_head", {}),
+    reply("All done."),
+  ]);
+  const routerProvider = createFakeProvider([]);
+  const room = createRoom({
+    vault: openVault(root),
+    agents,
+    providers: { router: routerProvider, specialist },
+    router: createLlmRouter({ provider: routerProvider, agents, orchestratorId: "floor-manager" }),
+    userName: "Kevin",
+  });
+  const room2 = createRoom({
+    vault: openVault(root),
+    agents,
+    providers: { router: routerProvider, specialist: createFakeProvider([reply("No tools here.")]) },
+    router: createLlmRouter({ provider: routerProvider, agents, orchestratorId: "floor-manager" }),
+    userName: "Kevin",
+  });
+  const result = await room.send("@synthesizer do the thing");
+  const entry = result.replies[0]!;
+  assert.deepEqual(entry.tools, [
+    { name: "files_write", summary: "workspaces/shared/a.md", ok: true },
+    { name: "files_read", summary: "Interviews/missing.md", ok: false },
+    { name: "notes_head", summary: "", ok: true },
+  ]);
+  assert.ok(!JSON.stringify(entry).includes("TOP SECRET BODY"));
+  assert.equal(entry.stopped, undefined);
+
+  // A reply with no tool calls records no tools at all: that absence is the signal.
+  const plain = await room2.send("@synthesizer hi");
+  assert.equal(plain.replies[0]!.tools, undefined);
+});
+
+test("a turn that runs out of steps is marked, so a half-finished reply is not mistaken for a finished one", async () => {
+  const root = await mkdtemp(join(tmpdir(), "am-room-steps-"));
+  const agents = (await loadAgents(SAMPLE_AGENTS, [...KNOWN_TOOLS])).agents;
+  const specialist = createFakeProvider([
+    callTool("s1", "board_list", {}),
+    callTool("s2", "board_list", {}),
+    callTool("s3", "board_list", {}),
+  ]);
+  const routerProvider = createFakeProvider([]);
+  const room = createRoom({
+    vault: openVault(root),
+    agents,
+    providers: { router: routerProvider, specialist },
+    router: createLlmRouter({ provider: routerProvider, agents, orchestratorId: "floor-manager" }),
+    userName: "Kevin",
+    maxSteps: 3,
+  });
+  const result = await room.send("@synthesizer loop forever");
+  assert.equal(result.replies[0]!.stopped, "max_steps");
+  assert.equal(result.replies[0]!.tools?.length, 3);
+});

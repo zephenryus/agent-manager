@@ -6,6 +6,27 @@ const ACCENTS = {
   gray: "var(--gray)", grey: "var(--gray)",
 };
 const STATE_WORDS = { thinking: "thinking", working: "working" };
+// Plain-language wording for tool calls: [when we know what it is working on, when we do not].
+const TOOL_VERBS = {
+  files_list: ["looking in", "looking at the file list"],
+  files_read: ["reading", "reading a file"],
+  files_write: ["saving", "saving a file"],
+  board_list: ["checking", "checking a board"],
+  board_add: ["adding to", "adding to a board"],
+  board_edit: ["editing", "editing a board"],
+  board_set_status: ["updating", "updating a status"],
+  notes_head: ["checking its notes", "checking its notes"],
+  notes_tail: ["checking its notes", "checking its notes"],
+  notes_append: ["writing to its notes", "writing to its notes"],
+  notes_pin: ["updating its pinned notes", "updating its pinned notes"],
+  suggest_next: ["suggesting a next step", "suggesting a next step"],
+};
+const toolLabel = (t) => {
+  const [withWhat, bare] = TOOL_VERBS[t.name] ?? [`using ${t.name}`, `using ${t.name}`];
+  return t.summary ? `${withWhat} ${t.summary}` : bare;
+};
+// The exact tool and what it worked on, for checking. A summary is only a path or item name, never contents.
+const traceLine = (t) => `${t.ok ? "✓" : "✗"} ${t.name}${t.summary ? ` · ${t.summary}` : ""}${t.ok ? "" : " (failed)"}`;
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -35,6 +56,7 @@ const state = {
   wallView: "board",
   approvals: [], // every request, oldest first
   flash: null, // item id to scroll to after the next board load
+  openTrace: new Set(), // entry ids whose "Used N tools" block the user opened
 };
 
 const el = (tag, props = {}, ...kids) => {
@@ -142,6 +164,7 @@ function renderMessages(stick = true) {
       el("div", { class: "body", html: kind === "user" ? renderMarkdown(entry.text) : renderMarkdown(entry.text) }),
     );
     if (agent) msg.style.setProperty("--accent", accentOf(agent));
+    if (entry.tools?.length || entry.stopped) msg.append(activityTrace(entry));
     nodes.push(msg);
 
     const route = state.routingFor.get(entry.id);
@@ -167,13 +190,47 @@ function renderMessages(stick = true) {
 
   const working = state.agents.filter((a) => a.state !== "idle" && (state.channel === "room" || state.channel === `dm:${a.id}`));
   for (const a of working) {
-    const row = el("div", { class: "typing", role: "status" }, el("span", { class: "dot" }), el("span", { text: `${a.name} is ${a.state === "working" ? "using a tool" : "thinking"}…` }));
-    row.style.setProperty("--accent", accentOf(a));
-    nodes.push(row);
+    const act = a.activity;
+    const label = act?.current
+      ? `${a.name} is ${toolLabel(act.current)}…`
+      : a.state === "working"
+        ? `${a.name} is using a tool…`
+        : act?.done.length
+          ? `${a.name} is thinking about what it found…`
+          : `${a.name} is thinking…`;
+    const wrap = el("div", { class: "working", role: "status" }, el("div", { class: "typing" }, el("span", { class: "dot" }), el("span", { text: label })));
+    if (act?.done.length) {
+      const shown = act.done.slice(-5);
+      const steps = el("ul", { class: "steps", "aria-label": "Finished steps" });
+      if (act.done.length > shown.length) steps.append(el("li", { text: `… ${act.done.length - shown.length} earlier` }));
+      for (const t of shown) steps.append(el("li", { class: t.ok ? "" : "bad", text: traceLine(t) }));
+      wrap.append(steps);
+    }
+    wrap.style.setProperty("--accent", accentOf(a));
+    nodes.push(wrap);
   }
 
   area.replaceChildren(...nodes);
   if (stick || nearBottom) area.scrollTop = area.scrollHeight;
+}
+
+/** Under a reply: which tools the agent really called. No tools used means no block at all. */
+function activityTrace(entry) {
+  const tools = entry.tools ?? [];
+  const failed = tools.filter((t) => !t.ok).length;
+  const parts = [];
+  if (tools.length) parts.push(`Used ${tools.length} ${tools.length === 1 ? "tool" : "tools"}`);
+  if (failed) parts.push(`${failed} failed`);
+  if (entry.stopped) parts.push(tools.length ? "stopped at the step limit" : "Stopped at the step limit");
+  const box = el("details", { class: "trace" }, el("summary", { class: failed || entry.stopped ? "bad" : "", text: parts.join(" · ") }));
+  if (tools.length) {
+    const list = el("ul", { class: "steps" });
+    for (const t of tools) list.append(el("li", { class: t.ok ? "" : "bad", text: traceLine(t) }));
+    box.append(list);
+  }
+  box.open = state.openTrace.has(entry.id);
+  box.addEventListener("toggle", () => (box.open ? state.openTrace.add(entry.id) : state.openTrace.delete(entry.id)));
+  return box;
 }
 
 function pickSuggestion(agentId) {
@@ -453,11 +510,25 @@ els.form.addEventListener("submit", async (e) => {
 function onRoomEvent(ev) {
   if (ev.type === "agent_state") {
     const a = state.byId.get(ev.agentId);
-    if (a) a.state = ev.state;
+    if (a) {
+      a.state = ev.state;
+      if (ev.state === "thinking") a.activity = { current: null, done: [] };
+      else if (ev.state === "idle") delete a.activity;
+    }
     renderRoster();
     renderMessages(false);
   } else if (ev.type === "tool") {
-    // agent_state already says "working"; nothing extra to show.
+    const a = state.byId.get(ev.agentId);
+    if (a) {
+      a.activity ??= { current: null, done: [] };
+      if (ev.phase === "start") {
+        a.activity.current = { name: ev.name, summary: ev.summary };
+      } else {
+        a.activity.done.push({ name: ev.name, summary: ev.summary, ok: ev.ok });
+        a.activity.current = null;
+      }
+      renderMessages(false);
+    }
   } else if (ev.type === "routing") {
     const d = ev.decision;
     const who = d.responders.map(nameOf).join(" and ");

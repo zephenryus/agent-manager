@@ -18,6 +18,10 @@ function lastUserText(req: ModelRequest): string {
   return "";
 }
 
+function input_(req: ModelRequest): number {
+  return tokens(req.system) + req.messages.reduce((n, m) => n + tokens(JSON.stringify(m)), 0);
+}
+
 function pickAgent(text: string): string {
   const t = text.toLowerCase();
   if (/(note|theme|insight|synthes|transcript|quote)/.test(t)) return "synthesizer";
@@ -78,6 +82,23 @@ export function createDemoProvider(opts: DemoOptions = {}): Provider {
       }
 
       const id = /Your id is "([a-z0-9-]+)"/.exec(req.system)?.[1] ?? "floor-manager";
+
+      // For questions about notes, look in the Interviews folder first (list, then read the first file), so
+      // the live tool activity in the UI has something real to show. Anything else answers straight away.
+      if (id !== "floor-manager" && /(interview|note|theme)/i.test(lastUserText(req))) {
+        const results = req.messages.flatMap((m) => (m.role === "tool" ? m.results : []));
+        const has = (name: string) => req.tools.some((t) => t.name === name);
+        const call = (name: string, input: Record<string, unknown>): ModelResponse => ({
+          text: "",
+          toolCalls: [{ id: `demo-${name}-${results.length}`, name, input }],
+          usage: { inputTokens: input_(req), outputTokens: 12 },
+        });
+        if (results.length === 0 && has("files_list")) return call("files_list", { folder: "Interviews" });
+        if (results.length === 1 && has("files_read")) {
+          const first = /^(Interviews\/\S+\.md)/m.exec(results[0]!.output)?.[1];
+          if (first) return call("files_read", { path: first });
+        }
+      }
       const text = REPLIES[id] ?? REPLIES["floor-manager"]!;
       const wantsSuggestion = req.tools.some((t) => t.name === "suggest_next") && id !== "floor-manager";
       const suggest = id === "research-lead" ? "synthesizer" : "research-lead";

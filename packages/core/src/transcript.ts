@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { appendLine, readLastLines } from "./files.ts";
 import type { Usage } from "./types.ts";
+import type { ToolActivity } from "./toolActivity.ts";
 
 export type Suggestion = { agentId: string; reason: string };
 
@@ -13,6 +14,10 @@ export type TranscriptEntry = {
   text: string;
   usage?: Usage;
   suggestions?: Suggestion[];
+  /** Tools the agent called while writing this reply, in order. Absent when it used none. */
+  tools?: ToolActivity[];
+  /** Set when the turn ran out of steps, so the reply may be unfinished. */
+  stopped?: "max_steps";
 };
 
 export type EntryInput = Omit<TranscriptEntry, "id" | "ts">;
